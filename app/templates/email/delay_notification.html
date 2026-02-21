@@ -1,0 +1,12 @@
+// Eukexpress\backend\app\templates\email\delay_notification.html
+{% extends 'base.html' %}
+{% block content %}
+<h2>Delay Notification</h2>
+<p>Dear {{ recipient_name }},</p>
+<p>We regret to inform you that your shipment <strong>{{ tracking }}</strong> has been delayed.</p>
+<p><strong>Reason:</strong> {{ reason }}</p>
+<p><strong>Original Estimated Delivery:</strong> {{ original_eta }}</p>
+<p><strong>Revised Estimated Delivery:</strong> {{ revised_eta }}</p>
+<p>We apologize for any inconvenience this may cause. Our team is working to resolve this as quickly as possible.</p>
+<p><a href="{{ tracking_link }}" class="button">Track Your Shipment</a></p>
+{% endblock %}

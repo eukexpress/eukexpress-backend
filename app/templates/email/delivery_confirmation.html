@@ -1,0 +1,10 @@
+// Eukexpress\backend\app\templates\email\delivery_confirmation.html
+{% extends 'base.html' %}
+{% block content %}
+<h2>Delivery Confirmed</h2>
+<p>Dear {{ recipient_name }},</p>
+<p>Your shipment <strong>{{ tracking }}</strong> has been successfully delivered on {{ delivery_date }}.</p>
+<p><strong>Delivery Location:</strong> {{ destination }}</p>
+<p>Thank you for choosing EukExpress Global Logistics. We appreciate your business!</p>
+<p><a href="{{ tracking_link }}" class="button">View Delivery Details</a></p>
+{% endblock %}

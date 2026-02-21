@@ -1,0 +1,10 @@
+// Eukexpress\backend\app\templates\email\customs_released.html
+{% extends 'base.html' %}
+{% block content %}
+<h2>Customs Cleared</h2>
+<p>Dear {{ recipient_name }},</p>
+<p>Good news! Your shipment <strong>{{ tracking }}</strong> has been cleared by customs after {{ duration }}.</p>
+<p>The shipment is now proceeding to its next destination.</p>
+<p><a href="{{ tracking_link }}" class="button">Track Your Shipment</a></p>
+<p>Thank you for your patience.</p>
+{% endblock %}
