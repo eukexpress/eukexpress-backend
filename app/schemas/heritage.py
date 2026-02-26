@@ -3,7 +3,7 @@ Heritage Trust Email Schemas
 Pydantic models for request/response validation
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -15,8 +15,9 @@ class HeritageEmailSendRequest(BaseModel):
     html_content: Optional[str] = Field(None, description="HTML version of email")
     text_content: Optional[str] = Field(None, description="Plain text version")
     
-    @validator('to')
-    def validate_to(cls, v):
+    @field_validator('to')
+    @classmethod
+    def validate_to(cls, v: str) -> str:
         """Validate email addresses"""
         if not v or not v.strip():
             raise ValueError('At least one recipient email is required')
@@ -32,15 +33,16 @@ class HeritageEmailSendRequest(BaseModel):
         
         return v
     
-    @validator('subject')
-    def validate_subject(cls, v):
+    @field_validator('subject')
+    @classmethod
+    def validate_subject(cls, v: str) -> str:
         """Validate subject"""
         if not v or not v.strip():
             raise ValueError('Subject is required')
         return v.strip()
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "to": "recipient@example.com",
                 "subject": "Test Email",
@@ -54,7 +56,7 @@ class HeritageTestEmailRequest(BaseModel):
     to: EmailStr = Field(..., description="Email address to send test to")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "to": "test@example.com"
             }
@@ -67,15 +69,16 @@ class HeritageInvoiceRequest(BaseModel):
     amount: float = Field(..., description="Invoice amount", gt=0)
     description: str = Field(..., description="Invoice description", min_length=1)
     
-    @validator('amount')
-    def validate_amount(cls, v):
+    @field_validator('amount')
+    @classmethod
+    def validate_amount(cls, v: float) -> float:
         """Validate amount"""
         if v <= 0:
             raise ValueError('Amount must be greater than 0')
         return round(v, 2)
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "to": "client@example.com",
                 "invoice_number": "INV-2024-001",
@@ -93,7 +96,7 @@ class HeritageEmailResponse(BaseModel):
     from_email: Optional[str] = Field(None, description="From email address")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "message": "Email sent successfully",
@@ -110,7 +113,7 @@ class HeritagePingResponse(BaseModel):
     from_name: str = Field(..., description="From name configured")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "ok",
                 "message": "Heritage Trust email service is running",
@@ -134,7 +137,7 @@ class HeritageLogEntry(BaseModel):
     created_at: Optional[datetime]
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class HeritageLogsResponse(BaseModel):
     """Schema for logs response"""
@@ -148,7 +151,7 @@ class HeritageErrorResponse(BaseModel):
     errors: Optional[Dict[str, List[str]]] = Field(None, description="Validation errors")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "detail": "Validation error",
                 "errors": {

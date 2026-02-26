@@ -70,16 +70,22 @@ async def send_email(
     temp_files = []
     
     try:
-        # Validate using Pydantic schema
-        validated_data = HeritageEmailSendRequest(
-            to=to,
-            subject=subject,
-            html_content=html_content,
-            text_content=text_content
-        )
+        # Manual validation first to catch issues early
+        if not to or not to.strip():
+            raise HTTPException(status_code=422, detail="Field 'to' is required")
+        
+        if not subject or not subject.strip():
+            raise HTTPException(status_code=422, detail="Field 'subject' is required")
         
         # Parse recipients
-        recipients = [email.strip() for email in validated_data.to.split(',') if email.strip()]
+        recipients = [email.strip() for email in to.split(',') if email.strip()]
+        if not recipients:
+            raise HTTPException(status_code=422, detail="At least one valid recipient email is required")
+        
+        # Validate email formats
+        for email in recipients:
+            if '@' not in email or '.' not in email:
+                raise HTTPException(status_code=422, detail=f"Invalid email format: {email}")
         
         # Prepare attachments
         attachment_list = []
@@ -107,20 +113,20 @@ async def send_email(
         # Send email using service
         result = heritage_email.send_email(
             to=recipients,
-            subject=validated_data.subject,
-            html_content=validated_data.html_content,
-            text_content=validated_data.text_content,
+            subject=subject.strip(),
+            html_content=html_content.strip() if html_content else None,
+            text_content=text_content.strip() if text_content else None,
             attachments=attachment_list if attachment_list else None
         )
         
         # Create log entry
         email_log = HeritageEmailLog(
-            to_emails=validated_data.to,
-            subject=validated_data.subject,
+            to_emails=to,
+            subject=subject,
             email_type="general",
             attachments_count=len(attachment_list),
-            html_content=validated_data.html_content,
-            text_content=validated_data.text_content
+            html_content=html_content,
+            text_content=text_content
         )
         
         if result.get('success'):
@@ -146,6 +152,7 @@ async def send_email(
             raise HTTPException(status_code=500, detail=email_log.error_message)
             
     except HTTPException:
+        # Clean up temp files
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
@@ -153,6 +160,7 @@ async def send_email(
                 pass
         raise
     except Exception as e:
+        # Clean up temp files
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
@@ -176,15 +184,6 @@ async def send_email(
         except:
             pass
         
-        # Return validation error details
-        if hasattr(e, 'errors'):
-            raise HTTPException(
-                status_code=422,
-                detail=HeritageErrorResponse(
-                    detail="Validation error",
-                    errors=e.errors()
-                ).dict()
-            )
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post(
@@ -201,14 +200,18 @@ async def send_test_email(
     logger.info(f"To: {to}")
     
     try:
-        # Validate using Pydantic schema
-        validated_data = HeritageTestEmailRequest(to=to)
+        # Manual validation
+        if not to or not to.strip():
+            raise HTTPException(status_code=422, detail="Email address is required")
         
-        result = heritage_email.send_test_email(validated_data.to)
+        if '@' not in to or '.' not in to:
+            raise HTTPException(status_code=422, detail=f"Invalid email format: {to}")
+        
+        result = heritage_email.send_test_email(to.strip())
         
         # Create log entry
         email_log = HeritageEmailLog(
-            to_emails=validated_data.to,
+            to_emails=to,
             subject="Heritage Trust - Test Email",
             email_type="test"
         )
@@ -235,6 +238,8 @@ async def send_test_email(
         else:
             raise HTTPException(status_code=500, detail=email_log.error_message)
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Exception: {str(e)}")
         
@@ -274,18 +279,26 @@ async def send_invoice(
     pdf_path = None
     
     try:
-        # Validate using Pydantic schema
-        validated_data = HeritageInvoiceRequest(
-            to=to,
-            invoice_number=invoice_number,
-            amount=amount,
-            description=description
-        )
+        # Manual validation
+        if not to or not to.strip():
+            raise HTTPException(status_code=422, detail="Email address is required")
+        
+        if '@' not in to or '.' not in to:
+            raise HTTPException(status_code=422, detail=f"Invalid email format: {to}")
+        
+        if not invoice_number or not invoice_number.strip():
+            raise HTTPException(status_code=422, detail="Invoice number is required")
+        
+        if amount <= 0:
+            raise HTTPException(status_code=422, detail="Amount must be greater than 0")
+        
+        if not description or not description.strip():
+            raise HTTPException(status_code=422, detail="Description is required")
         
         invoice_data = {
-            'invoice_number': validated_data.invoice_number,
-            'amount': f"{validated_data.amount:.2f}",
-            'description': validated_data.description,
+            'invoice_number': invoice_number.strip(),
+            'amount': f"{amount:.2f}",
+            'description': description.strip(),
             'date': datetime.now().strftime("%Y-%m-%d")
         }
         
@@ -304,19 +317,19 @@ async def send_invoice(
                 pdf_path = temp_file.name
         
         result = heritage_email.send_invoice(
-            to_email=validated_data.to,
+            to_email=to.strip(),
             invoice_data=invoice_data,
             pdf_path=pdf_path
         )
         
         # Create log entry
         email_log = HeritageEmailLog(
-            to_emails=validated_data.to,
-            subject=f"Heritage Trust - Invoice #{validated_data.invoice_number}",
+            to_emails=to,
+            subject=f"Heritage Trust - Invoice #{invoice_number}",
             email_type="invoice",
-            invoice_number=validated_data.invoice_number,
-            invoice_amount=validated_data.amount,
-            invoice_description=validated_data.description,
+            invoice_number=invoice_number,
+            invoice_amount=amount,
+            invoice_description=description,
             attachments_count=1 if pdf_path else 0
         )
         
@@ -421,6 +434,6 @@ async def get_email_logs(
     return HeritageLogsResponse(
         total=total,
         logs=[
-            HeritageLogEntry.from_orm(log) for log in logs
+            HeritageLogEntry.model_validate(log) for log in logs
         ]
     )
