@@ -1,4 +1,3 @@
-#EukExpress-backend/app/main.py
 """
 EukExpress Global Logistics API
 """
@@ -11,10 +10,17 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+# Import all route modules
 from app.api.v1 import (
-    auth, dashboard, shipments, shipment_detail,
-    interventions, communication, bulk_operations, public_tracking,
-    heritage_email  # Add this import
+    auth, 
+    dashboard, 
+    shipments, 
+    shipment_detail,
+    interventions, 
+    communication, 
+    bulk_operations, 
+    public_tracking,
+    heritage_email  # Make sure this is heritage_email, not heritage_email_routes
 )
 from app.config import settings
 from app.database import engine, Base
@@ -66,15 +72,15 @@ app.add_middleware(
 )
 
 # Routes - Note the prefix structure
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
-app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
-app.include_router(shipments.router, prefix="/api/v1/shipments", tags=["Shipments"])
-app.include_router(shipment_detail.router, prefix="/api/v1/shipments", tags=["Shipment Details"])
-app.include_router(interventions.router, prefix="/api/v1/shipments", tags=["Interventions"])
-app.include_router(communication.router, prefix="/api/v1/shipments", tags=["Communication"])
-app.include_router(bulk_operations.router, prefix="/api/v1/bulk", tags=["Bulk Operations"])
-app.include_router(public_tracking.router, prefix="/api/v1/public", tags=["Public"])
-app.include_router(heritage_email.router, prefix="/api/v1/heritage", tags=["Heritage Trust Email"])
+app.include_router(auth, prefix="/api/v1/auth", tags=["Auth"])  # Remove .router
+app.include_router(dashboard, prefix="/api/v1/dashboard", tags=["Dashboard"])  # Remove .router
+app.include_router(shipments, prefix="/api/v1/shipments", tags=["Shipments"])  # Remove .router
+app.include_router(shipment_detail, prefix="/api/v1/shipments", tags=["Shipment Details"])  # Remove .router
+app.include_router(interventions, prefix="/api/v1/shipments", tags=["Interventions"])  # Remove .router
+app.include_router(communication, prefix="/api/v1/shipments", tags=["Communication"])  # Remove .router
+app.include_router(bulk_operations, prefix="/api/v1/bulk", tags=["Bulk Operations"])  # Remove .router
+app.include_router(public_tracking, prefix="/api/v1/public", tags=["Public"])  # Remove .router
+app.include_router(heritage_email, prefix="/api/v1/heritage", tags=["Heritage Trust Email"])  # Remove .router
 
 # Static files
 os.makedirs(settings.UPLOAD_PATH, exist_ok=True)
@@ -87,17 +93,26 @@ app.mount("/qr", StaticFiles(directory=settings.QR_CODE_PATH), name="qr")
 
 @app.get("/")
 async def root():
+    """Root endpoint with API information"""
     return {
         "app": "EukExpress API",
         "version": "1.0.0",
         "status": "running",
         "environment": settings.APP_ENV,
         "docs": "/docs",
-        "heritage_email": "/api/v1/heritage/ping"  # Added for easy testing
+        "endpoints": {
+            "heritage_email": {
+                "ping": "GET /api/v1/heritage/ping",
+                "test": "POST /api/v1/heritage/test (form: to=email@example.com)",
+                "send": "POST /api/v1/heritage/send (form: to, subject, html_content, text_content, attachments)",
+                "invoice": "POST /api/v1/heritage/invoice (form: to, invoice_number, amount, description, pdf_attachment)"
+            }
+        }
     }
 
 @app.get("/health")
 async def health():
+    """Health check endpoint"""
     return {
         "status": "ok",
         "time": datetime.utcnow().isoformat(),
