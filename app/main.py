@@ -1,5 +1,3 @@
-# Eukexpress\backend\app\main.py
-
 """
 EukExpress Global Logistics API
 """
@@ -14,7 +12,8 @@ from datetime import datetime
 
 from app.api.v1 import (
     auth, dashboard, shipments, shipment_detail,
-    interventions, communication, bulk_operations, public_tracking
+    interventions, communication, bulk_operations, public_tracking,
+    heritage_email  # Add this import
 )
 from app.config import settings
 from app.database import engine, Base
@@ -56,7 +55,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - Using settings.cors_origins_list instead of "*"
+# CORS - Using settings.cors_origins_list
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -65,7 +64,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routes
+# Routes - Note the prefix structure
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(shipments.router, prefix="/api/v1/shipments", tags=["Shipments"])
@@ -74,6 +73,7 @@ app.include_router(interventions.router, prefix="/api/v1/shipments", tags=["Inte
 app.include_router(communication.router, prefix="/api/v1/shipments", tags=["Communication"])
 app.include_router(bulk_operations.router, prefix="/api/v1/bulk", tags=["Bulk Operations"])
 app.include_router(public_tracking.router, prefix="/api/v1/public", tags=["Public"])
+app.include_router(heritage_email.router, prefix="/api/v1/heritage", tags=["Heritage Trust Email"])
 
 # Static files
 os.makedirs(settings.UPLOAD_PATH, exist_ok=True)
@@ -91,7 +91,8 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "environment": settings.APP_ENV,
-        "docs": "/docs"
+        "docs": "/docs",
+        "heritage_email": "/api/v1/heritage/ping"  # Added for easy testing
     }
 
 @app.get("/health")
@@ -104,4 +105,6 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+    # Use PORT from environment or default to 8000
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)

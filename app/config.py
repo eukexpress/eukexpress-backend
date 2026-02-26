@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str
     RESEND_FROM_EMAIL: str = "onboarding@eukexpress.com"  # Must match Resend verified domain
     RESEND_FROM_NAME: str = "EukExpress Global Logistics"
+    HERITAGE_FROM_EMAIL: str = "mail@support.heritagetrust.eukexpress.com"
+    HERITAGE_FROM_NAME: str = "Heritage Trust"
     
     # File Uploads - Render Linux paths
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB

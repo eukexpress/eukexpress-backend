@@ -1,51 +1,55 @@
 """
 Heritage Trust Email Service
-Using Resend API with subdomain heritagetrust.eukexpress.com
-Supports text, images, and PDF attachments
+Using dedicated environment variables to avoid conflicts
 """
 
 import resend
 import base64
 import os
-from typing import List, Optional
+import logging
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-# Configure Resend with your API key
-RESEND_API_KEY = "re_hSXDoJjW_4U6xwL4AtgvCaucNYmwHaTa2"
-resend.api_key = RESEND_API_KEY
+from app.config import settings
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 class HeritageEmailService:
-    """Email service for Heritage Trust using Resend"""
+    """Email service for Heritage Trust using dedicated env vars"""
     
     def __init__(self):
-        self.from_email = "Heritage Trust <notifications@heritagetrust.eukexpress.com>"
+        # Use HERITAGE-specific variables from settings
+        # Note: You'll need to add these to your config.py
+        self.api_key = os.environ.get("HERITAGE_RESEND_API_KEY", "")
+        self.from_email = os.environ.get("HERITAGE_FROM_EMAIL", "support@heritagetrust.eukexpress.com")
+        self.from_name = os.environ.get("HERITAGE_FROM_NAME", "Heritage Trust")
+        
+        # Initialize Resend with the Heritage-specific key
+        if self.api_key:
+            resend.api_key = self.api_key
+            logger.info(f"✅ Heritage Email Service initialized with from: {self.from_email}")
+        else:
+            logger.error("❌ HERITAGE_RESEND_API_KEY not found in environment")
         
     def send_email(self, 
                    to: List[str], 
                    subject: str, 
-                   html_content: str = None,
-                   text_content: str = None,
-                   attachments: List[dict] = None,
-                   cc: List[str] = None,
-                   bcc: List[str] = None,
-                   reply_to: str = None):
+                   html_content: Optional[str] = None,
+                   text_content: Optional[str] = None,
+                   attachments: Optional[List[Dict]] = None,
+                   cc: Optional[List[str]] = None,
+                   bcc: Optional[List[str]] = None,
+                   reply_to: Optional[str] = None) -> Dict[str, Any]:
         """
         Send email with optional attachments
-        
-        Args:
-            to: List of recipient emails
-            subject: Email subject
-            html_content: HTML version of email
-            text_content: Plain text version (fallback)
-            attachments: List of attachment dicts with 'filename', 'content', and 'path'
-            cc: Carbon copy recipients
-            bcc: Blind carbon copy recipients
-            reply_to: Reply-to address
         """
+        # Format from address with name
+        from_formatted = f"{self.from_name} <{self.from_email}>"
         
         # Prepare email parameters
-        params = {
-            "from": self.from_email,
+        params: resend.Emails.SendParams = {
+            "from": from_formatted,
             "to": to,
             "subject": subject,
         }
@@ -53,10 +57,8 @@ class HeritageEmailService:
         # Add content (prefer HTML, fallback to text)
         if html_content:
             params["html"] = html_content
-        elif text_content:
+        if text_content:
             params["text"] = text_content
-        else:
-            params["text"] = " "  # Empty fallback
             
         # Optional fields
         if cc:
@@ -70,8 +72,7 @@ class HeritageEmailService:
         if attachments:
             params["attachments"] = []
             for attachment in attachments:
-                # If file path is provided, read and encode it
-                if 'path' in attachment:
+                if 'path' in attachment and os.path.exists(attachment['path']):
                     with open(attachment['path'], 'rb') as f:
                         content = f.read()
                     encoded = base64.b64encode(content).decode('utf-8')
@@ -79,9 +80,7 @@ class HeritageEmailService:
                         "filename": attachment.get('filename', Path(attachment['path']).name),
                         "content": encoded
                     })
-                # If content is provided directly
                 elif 'content' in attachment:
-                    # Ensure content is base64 encoded
                     if isinstance(attachment['content'], bytes):
                         encoded = base64.b64encode(attachment['content']).decode('utf-8')
                     else:
@@ -93,15 +92,16 @@ class HeritageEmailService:
         
         try:
             # Send email
+            logger.info(f"Sending Heritage Trust email to {to} with subject: {subject}")
             email = resend.Emails.send(params)
-            print(f"✅ Email sent successfully: {email['id']}")
+            logger.info(f"✅ Heritage Trust email sent successfully: {email['id']}")
             return {"success": True, "message_id": email['id'], "data": email}
         except Exception as e:
-            print(f"❌ Failed to send email: {str(e)}")
+            logger.error(f"❌ Failed to send Heritage Trust email: {str(e)}")
             return {"success": False, "error": str(e)}
     
-    def send_test_email(self, to_email: str):
-        """Send a test email"""
+    def send_test_email(self, to_email: str) -> Dict[str, Any]:
+        """Send a test email to verify configuration"""
         html_content = """
         <!DOCTYPE html>
         <html>
@@ -121,8 +121,8 @@ class HeritageEmailService:
                 </div>
                 <div class="content">
                     <h2>Test Email</h2>
-                    <p>This is a test email from Heritage Trust using <strong>heritagetrust.eukexpress.com</strong>.</p>
-                    <p>Your email service is configured correctly!</p>
+                    <p>This is a test email from Heritage Trust using <strong>support@heritagetrust.eukexpress.com</strong>.</p>
+                    <p>Your dedicated email service is configured correctly!</p>
                 </div>
                 <div class="footer">
                     <p>Heritage Trust - Powered by EukExpress</p>
@@ -136,10 +136,10 @@ class HeritageEmailService:
             to=[to_email],
             subject="Heritage Trust - Test Email",
             html_content=html_content,
-            text_content="This is a test email from Heritage Trust. Your email service is configured correctly!"
+            text_content="This is a test email from Heritage Trust. Your dedicated email service is configured correctly!"
         )
     
-    def send_invoice(self, to_email: str, invoice_data: dict, pdf_path: str = None):
+    def send_invoice(self, to_email: str, invoice_data: dict, pdf_path: Optional[str] = None) -> Dict[str, Any]:
         """Send invoice email with optional PDF attachment"""
         
         html_content = f"""
