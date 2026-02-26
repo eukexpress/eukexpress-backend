@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\models\__init__.py
 """
 Models Package Initialization
 Export all models for easy importing
@@ -10,6 +9,7 @@ from app.models.status_history import StatusHistory
 from app.models.intervention_log import InterventionLog
 from app.models.email_log import EmailLog
 from app.models.bulk_email_campaign import BulkEmailCampaign
+from app.models.heritage_email import HeritageEmailLog  # Add this line
 
 __all__ = [
     'Admin',
@@ -17,5 +17,6 @@ __all__ = [
     'StatusHistory',
     'InterventionLog',
     'EmailLog',
-    'BulkEmailCampaign'
+    'BulkEmailCampaign',
+    'HeritageEmailLog',  # Add this line
 ]
