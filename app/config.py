@@ -1,4 +1,3 @@
-# backend/app/config.py
 """
 Environment Configuration Management
 Loads and validates all environment variables
@@ -31,11 +30,11 @@ class Settings(BaseSettings):
     RESEND_FROM_EMAIL: str = "onboarding@eukexpress.com"
     RESEND_FROM_NAME: str = "EukExpress Global Logistics"
     
-    # Heritage Trust Email - Using verified subdomain
+    # Heritage Trust Email - EXACTLY as you have it
     HERITAGE_RESEND_API_KEY: str
-    HERITAGE_FROM_EMAIL: str = "onboarding@support.heritagetrust.eukexpress.com"  # Verified subdomain
+    HERITAGE_FROM_EMAIL: str = "onboarding@support.heritagetrust.eukexpress.com"
     HERITAGE_FROM_NAME: str = "Heritage Trust"
-    HERITAGE_API_KEY_NAME: Optional[str] = "mail"  # API key name in Resend
+    HERITAGE_API_KEY_NAME: Optional[str] = "mail"
     
     # File Uploads
     MAX_UPLOAD_SIZE: int = 10485760
@@ -43,7 +42,7 @@ class Settings(BaseSettings):
     UPLOAD_PATH: str = "/opt/render/project/src/frontend/uploads"
     QR_CODE_PATH: str = "/opt/render/project/src/frontend/qr_codes"
     
-    # Security - Updated CORS
+    # Security
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     CORS_ORIGINS: str = "https://eukexpress.com,https://www.eukexpress.com,https://eukexpress.onrender.com,https://eukexpress-backend.onrender.com,http://localhost:8000"

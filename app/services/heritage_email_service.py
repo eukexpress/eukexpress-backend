@@ -1,6 +1,6 @@
 """
 Heritage Trust Email Service
-Using verified subdomain: support.heritagetrust.eukexpress.com
+Using mandatory onboarding format: onboarding@support.heritagetrust.eukexpress.com
 """
 
 import resend
@@ -15,12 +15,12 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 class HeritageEmailService:
-    """Email service for Heritage Trust using verified subdomain"""
+    """Email service for Heritage Trust - uses onboarding@ format as required by Resend"""
     
     def __init__(self):
-        # Use verified subdomain from settings
+        # Use the exact format from settings - onboarding@support.heritagetrust.eukexpress.com
         self.api_key = getattr(settings, 'HERITAGE_RESEND_API_KEY', settings.RESEND_API_KEY)
-        self.from_email = getattr(settings, 'HERITAGE_FROM_EMAIL', "support@heritagetrust.eukexpress.com")
+        self.from_email = getattr(settings, 'HERITAGE_FROM_EMAIL', "onboarding@support.heritagetrust.eukexpress.com")
         self.from_name = getattr(settings, 'HERITAGE_FROM_NAME', "Heritage Trust")
         
         # Initialize Resend
@@ -28,9 +28,10 @@ class HeritageEmailService:
             resend.api_key = self.api_key
             logger.info(f"✅ Heritage Email Service initialized")
             logger.info(f"   From: {self.from_name} <{self.from_email}>")
+            logger.info(f"   Format: onboarding@[subdomain] (Resend requirement)")
         else:
             logger.error("❌ No API key found for Heritage Email Service")
-        
+    
     def send_email(self, 
                    to: List[str], 
                    subject: str, 
@@ -41,7 +42,7 @@ class HeritageEmailService:
                    bcc: Optional[List[str]] = None,
                    reply_to: Optional[str] = None) -> Dict[str, Any]:
         """
-        Send email with optional attachments using verified subdomain
+        Send email with optional attachments using onboarding@ format
         """
         # Format from address with name
         from_formatted = f"{self.from_name} <{self.from_email}>"
@@ -53,13 +54,11 @@ class HeritageEmailService:
             "subject": subject,
         }
         
-        # Add content (prefer HTML, fallback to text)
+        # Add content
         if html_content:
             params["html"] = html_content
-        elif text_content:
+        if text_content:
             params["text"] = text_content
-        else:
-            params["text"] = " "  # Empty fallback
             
         # Optional fields
         if cc:
@@ -79,15 +78,6 @@ class HeritageEmailService:
                     encoded = base64.b64encode(content).decode('utf-8')
                     params["attachments"].append({
                         "filename": attachment.get('filename', Path(attachment['path']).name),
-                        "content": encoded
-                    })
-                elif 'content' in attachment:
-                    if isinstance(attachment['content'], bytes):
-                        encoded = base64.b64encode(attachment['content']).decode('utf-8')
-                    else:
-                        encoded = attachment['content']
-                    params["attachments"].append({
-                        "filename": attachment['filename'],
                         "content": encoded
                     })
         
@@ -119,6 +109,7 @@ class HeritageEmailService:
             <div class="container">
                 <div class="header">
                     <h1>Heritage Trust</h1>
+                    <p style="font-size: 14px; opacity: 0.9;">{self.from_email}</p>
                 </div>
                 <div class="content">
                     <h2>Test Email</h2>
@@ -126,7 +117,7 @@ class HeritageEmailService:
                     <p>Your email service is configured correctly and ready to send!</p>
                 </div>
                 <div class="footer">
-                    <p>Heritage Trust - {self.from_email}</p>
+                    <p>Heritage Trust - Powered by EukExpress</p>
                 </div>
             </div>
         </body>
@@ -159,6 +150,7 @@ class HeritageEmailService:
             <div class="invoice">
                 <div class="header">
                     <h1>Heritage Trust</h1>
+                    <p style="font-size: 14px;">{self.from_email}</p>
                     <p>Invoice #{invoice_data.get('invoice_number', 'N/A')}</p>
                 </div>
                 <div class="details">
@@ -168,7 +160,7 @@ class HeritageEmailService:
                 </div>
                 <div class="footer">
                     <p>Thank you for your business!</p>
-                    <p>Heritage Trust - {self.from_email}</p>
+                    <p>Heritage Trust - Powered by EukExpress</p>
                 </div>
             </div>
         </body>
