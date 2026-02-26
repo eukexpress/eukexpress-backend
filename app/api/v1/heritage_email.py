@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 async def send_email(
     request: Request,
     to: str = Form(..., description="Recipient email address(es), comma-separated"),
-    subject: str = Form(..., description="Email subject", min_length=1, max_length=255),
-    html_content: Optional[str] = Form(None, description="HTML version of email"),
-    text_content: Optional[str] = Form(None, description="Plain text version"),
+    subject: str = Form(..., description="Email subject"),
+    html_content: Optional[str] = Form("", description="HTML version of email"),
+    text_content: Optional[str] = Form("", description="Plain text version"),
     attachments: Optional[List[UploadFile]] = File(None, description="Optional file attachments")
 ):
     """
@@ -47,10 +47,6 @@ async def send_email(
     if not subject or not subject.strip():
         raise HTTPException(status_code=400, detail="'subject' field is required")
     
-    if not html_content and not text_content:
-        # At least one content type must be provided
-        text_content = " "  # Empty fallback
-    
     # Parse recipients
     recipients = [email.strip() for email in to.split(',') if email.strip()]
     if not recipients:
@@ -60,6 +56,10 @@ async def send_email(
     for recipient in recipients:
         if '@' not in recipient or '.' not in recipient:
             logger.warning(f"Potentially invalid email format: {recipient}")
+    
+    # Ensure at least one content type is provided
+    if not html_content and not text_content:
+        text_content = " "  # Empty fallback
     
     # Prepare attachments
     attachment_list = []
@@ -98,8 +98,8 @@ async def send_email(
         result = heritage_email.send_email(
             to=recipients,
             subject=subject,
-            html_content=html_content,
-            text_content=text_content,
+            html_content=html_content if html_content else None,
+            text_content=text_content if text_content else None,
             attachments=attachment_list
         )
         
