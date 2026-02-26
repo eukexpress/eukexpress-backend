@@ -18,7 +18,7 @@ class HeritageEmailService:
     """Email service for Heritage Trust - uses onboarding@ format as required by Resend"""
     
     def __init__(self):
-        # Use the exact format from settings - onboarding@support.heritagetrust.eukexpress.com
+        # Use the exact format from settings
         self.api_key = getattr(settings, 'HERITAGE_RESEND_API_KEY', settings.RESEND_API_KEY)
         self.from_email = getattr(settings, 'HERITAGE_FROM_EMAIL', "onboarding@support.heritagetrust.eukexpress.com")
         self.from_name = getattr(settings, 'HERITAGE_FROM_NAME', "Heritage Trust")
@@ -28,7 +28,15 @@ class HeritageEmailService:
             resend.api_key = self.api_key
             logger.info(f"✅ Heritage Email Service initialized")
             logger.info(f"   From: {self.from_name} <{self.from_email}>")
-            logger.info(f"   Format: onboarding@[subdomain] (Resend requirement)")
+            
+            # Test the API key by trying to get the domain info
+            try:
+                # Optional: Verify the domain is properly set up
+                # domains = resend.Domains.list()
+                # logger.info(f"   Domains found: {len(domains)}")
+                pass
+            except Exception as e:
+                logger.warning(f"   Could not verify domains: {e}")
         else:
             logger.error("❌ No API key found for Heritage Email Service")
     
@@ -54,11 +62,15 @@ class HeritageEmailService:
             "subject": subject,
         }
         
-        # Add content
-        if html_content:
+        # Add content (Resend requires at least one of html or text)
+        if html_content and html_content.strip():
             params["html"] = html_content
-        if text_content:
+        if text_content and text_content.strip():
             params["text"] = text_content
+            
+        # If no content provided, add a default
+        if "html" not in params and "text" not in params:
+            params["text"] = " "
             
         # Optional fields
         if cc:
@@ -73,17 +85,25 @@ class HeritageEmailService:
             params["attachments"] = []
             for attachment in attachments:
                 if 'path' in attachment and os.path.exists(attachment['path']):
-                    with open(attachment['path'], 'rb') as f:
-                        content = f.read()
-                    encoded = base64.b64encode(content).decode('utf-8')
-                    params["attachments"].append({
-                        "filename": attachment.get('filename', Path(attachment['path']).name),
-                        "content": encoded
-                    })
+                    try:
+                        with open(attachment['path'], 'rb') as f:
+                            content = f.read()
+                        encoded = base64.b64encode(content).decode('utf-8')
+                        params["attachments"].append({
+                            "filename": attachment.get('filename', Path(attachment['path']).name),
+                            "content": encoded
+                        })
+                        logger.info(f"   Attachment added: {attachment.get('filename')}")
+                    except Exception as e:
+                        logger.error(f"   Failed to process attachment: {e}")
         
         try:
-            # Send email
+            # Log the request (without sensitive data)
             logger.info(f"Sending email to {to} from {self.from_email}")
+            logger.info(f"   Subject: {subject}")
+            logger.info(f"   Attachments: {len(params.get('attachments', []))}")
+            
+            # Send email
             email = resend.Emails.send(params)
             logger.info(f"✅ Email sent successfully: {email['id']}")
             return {"success": True, "message_id": email['id'], "data": email}
@@ -128,7 +148,7 @@ class HeritageEmailService:
             to=[to_email],
             subject="Heritage Trust - Test Email",
             html_content=html_content,
-            text_content=f"This is a test email from Heritage Trust."
+            text_content="This is a test email from Heritage Trust. Your email service is configured correctly."
         )
     
     def send_invoice(self, to_email: str, invoice_data: dict, pdf_path: Optional[str] = None) -> Dict[str, Any]:
