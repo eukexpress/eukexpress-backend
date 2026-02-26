@@ -5,16 +5,16 @@ Loads and validates all environment variables
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "EukExpress Global Logistics"
-    APP_ENV: str = "production"  # Changed to production
+    APP_ENV: str = "production"
     APP_SECRET_KEY: str
     APP_DEBUG: bool = False
-    APP_URL: str = "https://eukexpress.onrender.com"  # Your Render URL
+    APP_URL: str = "https://eukexpress.onrender.com"
     
     # Database
     DATABASE_URL: str
@@ -26,23 +26,27 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = "admin@eukexpress.com"
     ADMIN_PASSWORD: str
     
-    # Resend Email - IMPORTANT: Using onboarding@ as required by Resend
+    # Resend Email - Main app
     RESEND_API_KEY: str
-    RESEND_FROM_EMAIL: str = "onboarding@eukexpress.com"  # Must match Resend verified domain
+    RESEND_FROM_EMAIL: str = "onboarding@eukexpress.com"
     RESEND_FROM_NAME: str = "EukExpress Global Logistics"
-    HERITAGE_FROM_EMAIL: str = "mail@support.heritagetrust.eukexpress.com"
-    HERITAGE_FROM_NAME: str = "Heritage Trust"
     
-    # File Uploads - Render Linux paths
-    MAX_UPLOAD_SIZE: int = 10485760  # 10MB
+    # Heritage Trust Email - Using verified subdomain
+    HERITAGE_RESEND_API_KEY: str
+    HERITAGE_FROM_EMAIL: str = "onboarding@support.heritagetrust.eukexpress.com"  # Verified subdomain
+    HERITAGE_FROM_NAME: str = "Heritage Trust"
+    HERITAGE_API_KEY_NAME: Optional[str] = "mail"  # API key name in Resend
+    
+    # File Uploads
+    MAX_UPLOAD_SIZE: int = 10485760
     ALLOWED_EXTENSIONS: str = ".jpg,.jpeg,.png"
     UPLOAD_PATH: str = "/opt/render/project/src/frontend/uploads"
     QR_CODE_PATH: str = "/opt/render/project/src/frontend/qr_codes"
     
-    # Security
+    # Security - Updated CORS
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    CORS_ORIGINS: str = "https://eukexpress.onrender.com,https://www.eukexpress.com,http://localhost:8000"
+    CORS_ORIGINS: str = "https://eukexpress.com,https://www.eukexpress.com,https://eukexpress.onrender.com,https://eukexpress-backend.onrender.com,http://localhost:8000"
     
     # Rate Limiting
     RATE_LIMIT_REQUESTS: int = 100
@@ -62,15 +66,12 @@ class Settings(BaseSettings):
     
     @property
     def allowed_extensions_list(self) -> List[str]:
-        """Convert ALLOWED_EXTENSIONS string to list"""
         return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",")]
     
     @property
     def cors_origins_list(self) -> List[str]:
-        """Convert CORS_ORIGINS string to list"""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
 
-# Create global settings instance
 settings = Settings()
 
 # Ensure directories exist

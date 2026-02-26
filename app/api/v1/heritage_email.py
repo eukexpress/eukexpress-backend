@@ -12,8 +12,8 @@ from datetime import datetime
 
 from app.services.heritage_email_service import heritage_email
 
-# Configure router with correct prefix - REMEMBER this is /api/v1/heritage
-router = APIRouter(prefix="/heritage", tags=["Heritage Trust Email"])
+# IMPORTANT: Remove the prefix from here - it will be added in main.py
+router = APIRouter(tags=["Heritage Trust Email"])
 logger = logging.getLogger(__name__)
 
 @router.post("/send")
@@ -166,7 +166,6 @@ async def send_invoice(
         logger.error(f"Invoice sending failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Add a test GET endpoint to verify the router is working
 @router.get("/ping")
 async def ping():
     """Simple ping endpoint to test if the router is working"""

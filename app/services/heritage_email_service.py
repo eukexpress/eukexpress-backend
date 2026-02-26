@@ -1,6 +1,6 @@
 """
 Heritage Trust Email Service
-Using dedicated environment variables to avoid conflicts
+Using verified subdomain: support.heritagetrust.eukexpress.com
 """
 
 import resend
@@ -12,23 +12,25 @@ from pathlib import Path
 
 from app.config import settings
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 class HeritageEmailService:
-    """Email service for Heritage Trust using dedicated env vars"""
+    """Email service for Heritage Trust using verified subdomain"""
     
     def __init__(self):
-        # Use HERITAGE-specific variables from settings
-        # Note: You'll need to add these to your config.py
-        self.api_key = os.environ.get("HERITAGE_RESEND_API_KEY", "")
-        self.from_email = os.environ.get("HERITAGE_FROM_EMAIL", "support@heritagetrust.eukexpress.com")
-        self.from_name = os.environ.get("HERITAGE_FROM_NAME", "Heritage Trust")
+        # Use verified subdomain from settings
+        self.api_key = settings.HERITAGE_RESEND_API_KEY
+        self.from_email = settings.HERITAGE_FROM_EMAIL  # onboarding@support.heritagetrust.eukexpress.com
+        self.from_name = settings.HERITAGE_FROM_NAME  # Heritage Trust
+        self.api_key_name = getattr(settings, 'HERITAGE_API_KEY_NAME', 'mail')
         
-        # Initialize Resend with the Heritage-specific key
+        # Initialize Resend
         if self.api_key:
             resend.api_key = self.api_key
-            logger.info(f"✅ Heritage Email Service initialized with from: {self.from_email}")
+            logger.info(f"✅ Heritage Email Service initialized")
+            logger.info(f"   From: {self.from_name} <{self.from_email}>")
+            logger.info(f"   API Key: {self.api_key_name}")
+            logger.info(f"   Subdomain: support.heritagetrust.eukexpress.com (verified)")
         else:
             logger.error("❌ HERITAGE_RESEND_API_KEY not found in environment")
         
@@ -42,7 +44,7 @@ class HeritageEmailService:
                    bcc: Optional[List[str]] = None,
                    reply_to: Optional[str] = None) -> Dict[str, Any]:
         """
-        Send email with optional attachments
+        Send email with optional attachments using verified subdomain
         """
         # Format from address with name
         from_formatted = f"{self.from_name} <{self.from_email}>"
@@ -54,7 +56,7 @@ class HeritageEmailService:
             "subject": subject,
         }
         
-        # Add content (prefer HTML, fallback to text)
+        # Add content
         if html_content:
             params["html"] = html_content
         if text_content:
@@ -92,26 +94,26 @@ class HeritageEmailService:
         
         try:
             # Send email
-            logger.info(f"Sending Heritage Trust email to {to} with subject: {subject}")
+            logger.info(f"Sending email to {to} from verified subdomain {self.from_email}")
             email = resend.Emails.send(params)
-            logger.info(f"✅ Heritage Trust email sent successfully: {email['id']}")
+            logger.info(f"✅ Email sent successfully: {email['id']}")
             return {"success": True, "message_id": email['id'], "data": email}
         except Exception as e:
-            logger.error(f"❌ Failed to send Heritage Trust email: {str(e)}")
+            logger.error(f"❌ Failed to send email: {str(e)}")
             return {"success": False, "error": str(e)}
     
     def send_test_email(self, to_email: str) -> Dict[str, Any]:
         """Send a test email to verify configuration"""
-        html_content = """
+        html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: #003366; color: white; padding: 20px; text-align: center; }
-                .content { padding: 20px; background: #f9f9f9; }
-                .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: #003366; color: white; padding: 20px; text-align: center; }}
+                .content {{ padding: 20px; background: #f9f9f9; }}
+                .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
             </style>
         </head>
         <body>
@@ -121,11 +123,13 @@ class HeritageEmailService:
                 </div>
                 <div class="content">
                     <h2>Test Email</h2>
-                    <p>This is a test email from Heritage Trust using <strong>support@heritagetrust.eukexpress.com</strong>.</p>
-                    <p>Your dedicated email service is configured correctly!</p>
+                    <p>This is a test email from <strong>Heritage Trust</strong> using our verified subdomain:</p>
+                    <p style="font-size: 18px; color: #003366;">{self.from_email}</p>
+                    <p>Your email service is configured correctly and ready to send!</p>
                 </div>
                 <div class="footer">
                     <p>Heritage Trust - Powered by EukExpress</p>
+                    <p>Verified Subdomain: support.heritagetrust.eukexpress.com</p>
                 </div>
             </div>
         </body>
@@ -134,9 +138,9 @@ class HeritageEmailService:
         
         return self.send_email(
             to=[to_email],
-            subject="Heritage Trust - Test Email",
+            subject="Heritage Trust - Test Email (Verified Subdomain)",
             html_content=html_content,
-            text_content="This is a test email from Heritage Trust. Your dedicated email service is configured correctly!"
+            text_content=f"This is a test email from Heritage Trust using verified subdomain {self.from_email}"
         )
     
     def send_invoice(self, to_email: str, invoice_data: dict, pdf_path: Optional[str] = None) -> Dict[str, Any]:
@@ -159,6 +163,7 @@ class HeritageEmailService:
                 <div class="header">
                     <h1>Heritage Trust</h1>
                     <p>Invoice #{invoice_data.get('invoice_number', 'N/A')}</p>
+                    <p style="font-size: 14px;">{self.from_email}</p>
                 </div>
                 <div class="details">
                     <p><strong>Date:</strong> {invoice_data.get('date', 'N/A')}</p>
@@ -167,7 +172,7 @@ class HeritageEmailService:
                 </div>
                 <div class="footer">
                     <p>Thank you for your business!</p>
-                    <p>Heritage Trust - Powered by EukExpress</p>
+                    <p>Heritage Trust - Verified Subdomain: support.heritagetrust.eukexpress.com</p>
                 </div>
             </div>
         </body>
