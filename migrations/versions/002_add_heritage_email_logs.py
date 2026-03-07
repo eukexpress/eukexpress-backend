@@ -17,8 +17,8 @@ depends_on = None
 
 
 def upgrade():
-    # Create heritage_email_logs table
-    op.create_table('heritage_email_logs',
+    # Create email_logs table
+    op.create_table('email_logs',
         sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('message_id', sa.String(255), nullable=True, index=True),
         sa.Column('to_emails', sa.Text, nullable=False),
@@ -37,23 +37,23 @@ def upgrade():
     )
     
     # Create indexes
-    op.create_index('ix_heritage_email_logs_message_id', 'heritage_email_logs', ['message_id'])
-    op.create_index('ix_heritage_email_logs_status', 'heritage_email_logs', ['status'])
-    op.create_index('ix_heritage_email_logs_email_type', 'heritage_email_logs', ['email_type'])
-    op.create_index('ix_heritage_email_logs_created_at', 'heritage_email_logs', ['created_at'])
+    op.create_index('ix_email_logs_message_id', 'email_logs', ['message_id'])
+    op.create_index('ix_email_logs_status', 'email_logs', ['status'])
+    op.create_index('ix_email_logs_email_type', 'email_logs', ['email_type'])
+    op.create_index('ix_email_logs_created_at', 'email_logs', ['created_at'])
     
     # Create conditional index for invoice lookups
-    op.create_index('ix_heritage_email_logs_invoice', 'heritage_email_logs', ['invoice_number'], 
+    op.create_index('ix_email_logs_invoice', 'email_logs', ['invoice_number'], 
                     postgresql_where=sa.text('invoice_number IS NOT NULL'))
 
 
 def downgrade():
     # Drop indexes
-    op.drop_index('ix_heritage_email_logs_invoice', table_name='heritage_email_logs')
-    op.drop_index('ix_heritage_email_logs_created_at', table_name='heritage_email_logs')
-    op.drop_index('ix_heritage_email_logs_email_type', table_name='heritage_email_logs')
-    op.drop_index('ix_heritage_email_logs_status', table_name='heritage_email_logs')
-    op.drop_index('ix_heritage_email_logs_message_id', table_name='heritage_email_logs')
+    op.drop_index('ix_email_logs_invoice', table_name='email_logs')
+    op.drop_index('ix_email_logs_created_at', table_name='email_logs')
+    op.drop_index('ix_email_logs_email_type', table_name='email_logs')
+    op.drop_index('ix_email_logs_status', table_name='email_logs')
+    op.drop_index('ix_email_logs_message_id', table_name='email_logs')
     
     # Drop table
-    op.drop_table('heritage_email_logs')
+    op.drop_table('email_logs')

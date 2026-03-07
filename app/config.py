@@ -30,11 +30,11 @@ class Settings(BaseSettings):
     RESEND_FROM_EMAIL: str = "onboarding@eukexpress.com"
     RESEND_FROM_NAME: str = "EukExpress Global Logistics"
     
-    # Heritage Trust Email - EXACTLY as you have it
-    HERITAGE_RESEND_API_KEY: str
-    HERITAGE_FROM_EMAIL: str = "onboarding@support.heritagetrust.eukexpress.com"
-    HERITAGE_FROM_NAME: str = "Heritage Trust"
-    HERITAGE_API_KEY_NAME: Optional[str] = "mail"
+    # EukExpress Global Logistics Email - EXACTLY as you have it
+    EUKEXPRESS_RESEND_API_KEY: str
+    EUKEXPRESS_FROM_EMAIL: str = "onboarding@eukexpress.com"
+    EUKEXPRESS_FROM_NAME: str = "EukExpress Global Logistics"
+    EUKEXPRESS_API_KEY_NAME: Optional[str] = "mail"
     
     # File Uploads
     MAX_UPLOAD_SIZE: int = 10485760

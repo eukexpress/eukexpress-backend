@@ -1,5 +1,4 @@
-# Eukexpress\backend\app\api\v1\auth.py
-"""
+﻿"""
 Authentication Endpoints
 Admin login, logout, and password management
 """
@@ -11,99 +10,93 @@ from datetime import timedelta
 import logging
 
 from app.database import get_db
-from app.services import auth_service
-from app.schemas.admin import AdminLogin, TokenResponse, PasswordChange
+from app.services import (
+    authenticate_admin,
+    create_access_token,
+    get_current_user,
+    change_password,
+    update_last_login
+)
+from app.schemas.auth import Token, LoginRequest, ChangePasswordRequest
 from app.config import settings
 
-router = APIRouter()
+router = APIRouter(tags=["Authentication"])
 logger = logging.getLogger(__name__)
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=Token)
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    """
-    Admin login endpoint
-    Returns JWT token for authentication
-    """
-    logger.info(f"Login attempt for user: {form_data.username}")
-    
-    # Authenticate user
-    admin = auth_service.authenticate_admin(
-        db, 
-        form_data.username, 
-        form_data.password
-    )
-    
+    """Login with username and password (form data)"""
+    # Authenticate admin
+    admin = authenticate_admin(db, form_data.username, form_data.password)
     if not admin:
-        logger.warning(f"Failed login attempt for user: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Update last login info
-    client_ip = request.client.host
-    auth_service.update_last_login(db, admin.id, client_ip)
+    # Update last login
+    client_ip = request.client.host if request.client else "unknown"
+    update_last_login(db, admin.id, client_ip)
     
     # Create access token
-    access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth_service.create_access_token(
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
         data={"sub": admin.username, "id": str(admin.id)},
         expires_delta=access_token_expires
     )
     
-    logger.info(f"Successful login for user: {form_data.username}")
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "admin_id": str(admin.id),
-        "admin_username": admin.username
-    }
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/logout")
-async def logout(token: str = Depends(oauth2_scheme)):
-    """
-    Logout endpoint - invalidate token
-    Note: With JWT, we can't truly invalidate without a blacklist
-    This is a placeholder for future implementation with token blacklist
-    """
-    # In a production system, you might want to add the token to a blacklist
-    logger.info("User logged out")
-    return {"message": "Logged out successfully"}
+async def logout():
+    """Logout (client-side only - token just expires)"""
+    return {"message": "Successfully logged out"}
 
-@router.post("/change-password")
-async def change_password(
-    password_data: PasswordChange,
+@router.get("/verify")
+async def verify_token(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
-    """
-    Change admin password
-    Requires current password verification
-    """
-    # Get current admin from token
-    payload = auth_service.decode_token(token)
-    if not payload:
+    """Verify if token is valid"""
+    admin = get_current_user(token, db)
+    if not admin:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
     
-    admin_id = payload.get("id")
+    return {
+        "valid": True,
+        "username": admin.username,
+        "id": str(admin.id)
+    }
+
+@router.post("/change-password")
+async def change_admin_password(
+    request: ChangePasswordRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """Change password for authenticated admin"""
+    admin = get_current_user(token, db)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
     
-    # Verify current password and update
-    success = auth_service.change_password(
+    success = change_password(
         db,
-        admin_id,
-        password_data.current_password,
-        password_data.new_password
+        admin.id,
+        request.current_password,
+        request.new_password
     )
     
     if not success:
@@ -112,24 +105,25 @@ async def change_password(
             detail="Current password is incorrect"
         )
     
-    logger.info(f"Password changed for admin: {admin_id}")
-    return {"message": "Password updated successfully"}
+    return {"message": "Password changed successfully"}
 
-@router.get("/verify")
-async def verify_token(token: str = Depends(oauth2_scheme)):
-    """
-    Verify if token is valid
-    Used by frontend to check authentication status
-    """
-    payload = auth_service.decode_token(token)
-    if not payload:
+@router.get("/me")
+async def get_current_admin(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """Get current admin info"""
+    admin = get_current_user(token, db)
+    if not admin:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
     
     return {
-        "valid": True,
-        "username": payload.get("sub"),
-        "admin_id": payload.get("id")
+        "id": str(admin.id),
+        "username": admin.username,
+        "email": admin.email,
+        "last_login": admin.last_login.isoformat() if admin.last_login else None,
+        "last_login_ip": admin.last_login_ip
     }

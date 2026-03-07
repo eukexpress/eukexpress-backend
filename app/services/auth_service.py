@@ -1,4 +1,4 @@
-# Eukexpress\backend\app\services\auth_service.py
+﻿# Eukexpress\backend\app\services\auth_service.py
 """
 Authentication Service
 Handles JWT token creation, validation, and password management
@@ -81,3 +81,15 @@ def change_password(db: Session, admin_id: str, current_password: str, new_passw
     db.commit()
     
     return True
+def get_current_user(token: str, db: Session):
+    """Get current user from token"""
+    payload = decode_token(token)
+    if not payload:
+        return None
+    
+    username = payload.get("sub")
+    if not username:
+        return None
+    
+    admin = db.query(Admin).filter(Admin.username == username).first()
+    return admin
