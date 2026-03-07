@@ -25,14 +25,14 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = "admin@eukexpress.com"
     ADMIN_PASSWORD: str
     
-    # Resend Email - Main app
+    # Resend Email - Main configuration
     RESEND_API_KEY: str
-    RESEND_FROM_EMAIL: str = "onboarding@eukexpress.com"
+    RESEND_FROM_EMAIL: str = "onboarding@delivery.eukexpress.com"
     RESEND_FROM_NAME: str = "EukExpress Global Logistics"
     
-    # EukExpress Global Logistics Email - EXACTLY as you have it
+    # EukExpress Email - Unified configuration
     EUKEXPRESS_RESEND_API_KEY: str
-    EUKEXPRESS_FROM_EMAIL: str = "onboarding@eukexpress.com"
+    EUKEXPRESS_FROM_EMAIL: str = "onboarding@delivery.eukexpress.com"
     EUKEXPRESS_FROM_NAME: str = "EukExpress Global Logistics"
     EUKEXPRESS_API_KEY_NAME: Optional[str] = "mail"
     

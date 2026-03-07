@@ -1,9 +1,8 @@
-# Eukexpress\backend\app\database.py
 """
 Database Connection
 """
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import logging
@@ -13,19 +12,20 @@ from app.config import settings
 # Silence SQLAlchemy logger
 logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 
-# Create engine
+# Create engine with proper connection pooling
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=settings.DATABASE_POOL_SIZE,
+    max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_pre_ping=True,
-    echo=False  # CRITICAL: This disables all the verbose SQL logging
+    echo=False  # CRITICAL: This disables verbose SQL logging
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
+    """Dependency for getting database session"""
     db = SessionLocal()
     try:
         yield db

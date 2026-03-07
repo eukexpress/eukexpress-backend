@@ -1,5 +1,6 @@
 ﻿"""
 EukExpress Email API Endpoints
+Handles all email sending operations
 """
 import logging
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form, Request
@@ -27,7 +28,7 @@ async def send_email(
     request: EmailRequest,
     token: str = Depends(oauth2_scheme)
 ):
-    """Send an email"""
+    """Send an email (admin only)"""
     # Verify authentication
     payload = auth_service.decode_token(token)
     if not payload:
@@ -60,7 +61,7 @@ async def send_test_email(
     request: TestEmailRequest,
     token: str = Depends(oauth2_scheme)
 ):
-    """Send a test email"""
+    """Send a test email (admin only)"""
     # Verify authentication
     payload = auth_service.decode_token(token)
     if not payload:
@@ -92,13 +93,13 @@ async def ping():
             "status": "ok",
             "service": "EukExpress Email Service",
             "from_email": email_service.from_email,
-            "from_name": email_service.from_name
+            "from_name": email_service.from_name,
+            "domain": "delivery.eukexpress.com (verified)"
         }
     }
 
 @router.post("/invoice")
 async def send_invoice(
-    request: Request,
     to: EmailStr = Form(...),
     invoice_number: str = Form(...),
     amount: str = Form(...),
@@ -106,7 +107,7 @@ async def send_invoice(
     pdf: UploadFile = File(...),
     token: str = Depends(oauth2_scheme)
 ):
-    """Send an invoice email with PDF attachment"""
+    """Send an invoice email with PDF attachment (admin only)"""
     # Verify authentication
     payload = auth_service.decode_token(token)
     if not payload:
@@ -122,6 +123,7 @@ async def send_invoice(
         <p>Amount: {amount}</p>
         <p>Description: {description}</p>
         <p>Please find your invoice attached.</p>
+        <p><small>Sent from EukExpress Global Logistics via onboarding@delivery.eukexpress.com</small></p>
         """
         
         # Send email with attachment

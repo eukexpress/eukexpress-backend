@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from typing import Optional
 import logging
-from datetime import date
+from datetime import date, datetime  # FIXED: Added datetime import
 
 from app.database import get_db
 from app.models.shipment import Shipment
@@ -234,7 +234,7 @@ async def update_status(
     # Update status
     old_status = shipment.current_status
     shipment.current_status = status_update.status
-    shipment.updated_at = datetime.utcnow()
+    shipment.updated_at = datetime.utcnow()  # FIXED: Now datetime is defined
     
     db.commit()
     
