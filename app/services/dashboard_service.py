@@ -1,4 +1,5 @@
-﻿"""
+﻿# Eukexpress\backend\app\services\dashboard_service.py
+"""
 Dashboard Service
 Provides statistics and metrics for the admin dashboard
 """

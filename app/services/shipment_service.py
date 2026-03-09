@@ -1,4 +1,5 @@
-﻿"""
+﻿# app/services/shipment_service.py
+"""
 Shipment Service
 Business logic for shipment operations
 """

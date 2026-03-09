@@ -1,4 +1,5 @@
-﻿"""
+﻿# Eukexpress\backend\app\services\email_service.py
+"""
 EukExpress Email Service
 Handles all email sending operations using Resend
 """

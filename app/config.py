@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Security
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    CORS_ORIGINS: str = "https://eukexpress.com,https://www.eukexpress.com,https://eukexpress.onrender.com,https://eukexpress-backend.onrender.com,http://localhost:8000"
+    CORS_ORIGINS: str = "https://eukexpress.com,https://www.eukexpress.com,https://eukexpress.onrender.com,https://eukexpress-backend.onrender.com,http://localhost:8000,http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://127.0.0.1:3000,file://"
     
     # Rate Limiting
     RATE_LIMIT_REQUESTS: int = 100

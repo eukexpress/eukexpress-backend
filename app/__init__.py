@@ -1,6 +1,7 @@
 ﻿"""
-API Package
+App module initialization
 """
-from app.api.v1 import auth, dashboard, shipments, shipment_detail
-from app.api.v1 import interventions, communication, bulk_operations, public_tracking
+from app.api import api_router
+from app.config import settings
 
+__all__ = ["api_router", "settings"]

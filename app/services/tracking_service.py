@@ -1,5 +1,4 @@
-# Tracking number generation service
-
+# app/services/tracking_service.py
 import secrets
 import string
 

@@ -10,7 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-# Configure logging to be less verbose
+# Configure logging
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,11 @@ from app.api.v1 import (
     shipments_router,
     dashboard_router,
     email_router,
-    public_router
+    public_router,
+    communication_router,
+    shipment_detail_router,
+    bulk_operations_router,
+    interventions_router
 )
 from app.config import settings
 from app.database import engine, Base
@@ -58,14 +62,43 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# ============================================
+# CORS CONFIGURATION - FIXED FOR FRONTEND
+# ============================================
+# Define all allowed origins explicitly
+ALLOWED_ORIGINS = [
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://eukexpress.com",
+    "https://www.eukexpress.com",
+]
+
+# Add origins from settings if they exist
+if hasattr(settings, 'cors_origins_list') and settings.cors_origins_list:
+    ALLOWED_ORIGINS.extend(settings.cors_origins_list)
+
+# Remove duplicates
+ALLOWED_ORIGINS = list(set(ALLOWED_ORIGINS))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Log CORS configuration
+print("\n" + "═"*50)
+print("🔧 CORS Configuration:")
+for origin in ALLOWED_ORIGINS:
+    print(f"   • {origin}")
+print("═"*50 + "\n")
 
 # Routes
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
@@ -73,6 +106,10 @@ app.include_router(shipments_router, prefix="/api/v1/shipments", tags=["Shipment
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(email_router, prefix="/api/v1/email", tags=["Email"])
 app.include_router(public_router, prefix="/api/v1/public", tags=["Public Tracking"])
+app.include_router(communication_router, prefix="/api/v1/shipments", tags=["Communication"])
+app.include_router(shipment_detail_router, prefix="/api/v1/shipments", tags=["Shipment Details"])
+app.include_router(bulk_operations_router, prefix="/api/v1/bulk", tags=["Bulk Operations"])
+app.include_router(interventions_router, prefix="/api/v1/shipments", tags=["Interventions"])
 
 # Static files
 os.makedirs(settings.UPLOAD_PATH, exist_ok=True)

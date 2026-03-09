@@ -1,4 +1,4 @@
-﻿"""
+"""
 Authentication Endpoints
 Admin login, logout, and password management
 """
@@ -17,7 +17,7 @@ from app.services import (
     change_password,
     update_last_login
 )
-from app.schemas.auth import Token, LoginRequest, ChangePasswordRequest
+from app.schemas.auth import Token, ChangePasswordRequest
 from app.config import settings
 
 router = APIRouter(tags=["Authentication"])
@@ -32,27 +32,41 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """Login with username and password (form data)"""
-    # Authenticate admin
-    admin = authenticate_admin(db, form_data.username, form_data.password)
-    if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        # Authenticate admin
+        admin = authenticate_admin(db, form_data.username, form_data.password)
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Update last login
+        client_ip = request.client.host if request.client else "unknown"
+        update_last_login(db, admin.id, client_ip)
+        
+        # Get token expiry
+        token_expiry_minutes = getattr(settings, 'JWT_ACCESS_TOKEN_EXPIRE_MINUTES', 
+                                       getattr(settings, 'ACCESS_TOKEN_EXPIRE_MINUTES', 30))
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=token_expiry_minutes)
+        access_token = create_access_token(
+            data={"sub": admin.username, "id": str(admin.id)},
+            expires_delta=access_token_expires
         )
-    
-    # Update last login
-    client_ip = request.client.host if request.client else "unknown"
-    update_last_login(db, admin.id, client_ip)
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": admin.username, "id": str(admin.id)},
-        expires_delta=access_token_expires
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during login"
+        )
 
 @router.post("/logout")
 async def logout():
@@ -65,18 +79,25 @@ async def verify_token(
     db: Session = Depends(get_db)
 ):
     """Verify if token is valid"""
-    admin = get_current_user(token, db)
-    if not admin:
+    try:
+        admin = get_current_user(token, db)
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+        
+        return {
+            "valid": True,
+            "username": admin.username,
+            "id": str(admin.id)
+        }
+    except Exception as e:
+        logger.error(f"Token verification error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
-    
-    return {
-        "valid": True,
-        "username": admin.username,
-        "id": str(admin.id)
-    }
 
 @router.post("/change-password")
 async def change_admin_password(
@@ -85,27 +106,37 @@ async def change_admin_password(
     db: Session = Depends(get_db)
 ):
     """Change password for authenticated admin"""
-    admin = get_current_user(token, db)
-    if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+    try:
+        admin = get_current_user(token, db)
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+        
+        success = change_password(
+            db,
+            admin.id,
+            request.current_password,
+            request.new_password
         )
-    
-    success = change_password(
-        db,
-        admin.id,
-        request.current_password,
-        request.new_password
-    )
-    
-    if not success:
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+        
+        return {"message": "Password changed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password change error: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
-    
-    return {"message": "Password changed successfully"}
 
 @router.get("/me")
 async def get_current_admin(
@@ -113,17 +144,29 @@ async def get_current_admin(
     db: Session = Depends(get_db)
 ):
     """Get current admin info"""
-    admin = get_current_user(token, db)
-    if not admin:
+    try:
+        admin = get_current_user(token, db)
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+        
+        return {
+            "id": str(admin.id),
+            "username": admin.username,
+            "email": admin.email,
+            "last_login": admin.last_login.isoformat() if admin.last_login else None,
+            "last_login_ip": admin.last_login_ip
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get current admin error: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
-    
-    return {
-        "id": str(admin.id),
-        "username": admin.username,
-        "email": admin.email,
-        "last_login": admin.last_login.isoformat() if admin.last_login else None,
-        "last_login_ip": admin.last_login_ip
-    }
+
+# Export router with expected name
+auth_router = router

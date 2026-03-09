@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\api\v1\public_tracking.py
 """
 Public Tracking Endpoints
 No authentication required - for customer tracking
@@ -16,7 +15,7 @@ from app.models import Shipment, StatusHistory
 from app.utils.constants import SHIPMENT_STATUSES, STATUS_COLORS
 from app.config import settings
 
-router = APIRouter()
+router = APIRouter(tags=["Public Tracking"])
 logger = logging.getLogger(__name__)
 
 @router.get("/track/{tracking}")
@@ -157,3 +156,6 @@ async def public_status():
         "service": "EukExpress Public Tracking",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+# Export router with expected name
+public_router = router
