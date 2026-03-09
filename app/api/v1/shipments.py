@@ -15,11 +15,20 @@ import hashlib
 from app.database import get_db
 from app.models.shipment import Shipment
 from app.schemas.shipment import StatusUpdate
+from app.schemas.intervention import (
+    CustomsIntervention, SecurityIntervention, DamageIntervention,
+    ReturnIntervention, DelayIntervention, InterventionResponse
+)
 from app.api.deps import get_current_user_required
+from app.services import intervention_service, email_service, notification_service
 from app.utils.constants import SHIPMENT_STATUSES, STATUS_COLORS
 
 router = APIRouter(tags=["Shipments"])
 logger = logging.getLogger(__name__)
+
+# ============================================
+# EXISTING ENDPOINTS (keep as is)
+# ============================================
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_shipment(
@@ -125,6 +134,9 @@ async def create_shipment(
     db.commit()
     db.refresh(new_shipment)
     
+    # Send email notifications
+    await notification_service.send_shipment_created_notification(new_shipment)
+    
     logger.info(f"📦 Shipment created: {tracking_number}")
     
     return {
@@ -150,13 +162,6 @@ async def get_shipments(
     date_to: Optional[date] = Query(None)
 ):
     """Get paginated list of shipments"""
-    logger.info("="*50)
-    logger.info("📦 SHIPMENTS LIST ENDPOINT HIT")
-    logger.info(f"User: {current_user.username if current_user else 'None'}")
-    logger.info(f"User ID: {current_user.id if current_user else 'None'}")
-    logger.info(f"Headers: {dict(request.headers)}")
-    logger.info("="*50)
-
     query = db.query(Shipment)
 
     if status:
@@ -221,7 +226,9 @@ async def get_shipments(
             "recipient_name": shipment.recipient_name,
             "last_update": shipment.updated_at.isoformat() if shipment.updated_at else None,
             "has_interventions": has_interventions,
-            "intervention_types": intervention_types
+            "intervention_types": intervention_types,
+            "front_image": f"/uploads/shipments/{shipment.tracking_number}/front.jpg" if shipment.front_image_path else None,
+            "rear_image": f"/uploads/shipments/{shipment.tracking_number}/rear.jpg" if shipment.rear_image_path else None
         })
 
     return {
@@ -241,8 +248,6 @@ async def get_filters(
     db: Session = Depends(get_db)
 ):
     """Get available filter options"""
-    logger.info(f"🔍 Filters accessed by: {current_user.username}")
-
     db_statuses = db.query(Shipment.current_status).distinct().all()
     statuses = [s[0] for s in db_statuses if s[0]]
 
@@ -270,8 +275,6 @@ async def get_shipment(
     db: Session = Depends(get_db)
 ):
     """Get shipment details by tracking number"""
-    logger.info(f"📋 Shipment details for: {tracking_number} by: {current_user.username}")
-    
     shipment = db.query(Shipment).filter(
         Shipment.tracking_number == tracking_number.upper()
     ).first()
@@ -333,8 +336,6 @@ async def update_status(
     db: Session = Depends(get_db)
 ):
     """Update shipment status"""
-    logger.info(f"🔄 Status update for: {tracking_number} by: {current_user.username}")
-    
     shipment = db.query(Shipment).filter(
         Shipment.tracking_number == tracking_number.upper()
     ).first()
@@ -350,6 +351,11 @@ async def update_status(
     shipment.updated_at = datetime.utcnow()
     
     db.commit()
+    
+    # Send notification
+    await notification_service.trigger_status_change_notifications(
+        shipment, old_status, status_update.status, db
+    )
     
     return {
         "success": True,
@@ -368,8 +374,6 @@ async def get_available_statuses(
     db: Session = Depends(get_db)
 ):
     """Get available status transitions"""
-    logger.info(f"📋 Available statuses for: {tracking_number} by: {current_user.username}")
-    
     shipment = db.query(Shipment).filter(
         Shipment.tracking_number == tracking_number.upper()
     ).first()
@@ -408,5 +412,216 @@ async def get_available_statuses(
         }
     }
 
-# Export router with expected name - THIS IS CRITICAL
+# ============================================
+# NEW INTERVENTION ENDPOINTS
+# ============================================
+
+@router.post("/{tracking_number}/interventions/customs", response_model=InterventionResponse)
+async def toggle_customs_bond(
+    tracking_number: str,
+    intervention: CustomsIntervention,
+    current_user = Depends(get_current_user_required),
+    db: Session = Depends(get_db)
+):
+    """Toggle customs bond for a shipment"""
+    shipment = db.query(Shipment).filter(
+        Shipment.tracking_number == tracking_number.upper()
+    ).first()
+    
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    # Call service
+    result = intervention_service.toggle_customs_bond(
+        db, str(shipment.id), str(current_user.id)
+    )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to toggle customs bond"))
+    
+    # Send email notification
+    email_sent = await notification_service.trigger_intervention_notifications(
+        shipment, "customs", intervention.action, db,
+        location=intervention.location,
+        reference=intervention.reference,
+        notes=intervention.notes
+    )
+    
+    return {
+        "success": True,
+        "intervention_type": "customs",
+        "action": intervention.action,
+        "new_state": result["customs_bond_active"],
+        "timestamp": datetime.utcnow(),
+        "email_sent": email_sent,
+        "message": f"Customs bond {'activated' if result['customs_bond_active'] else 'deactivated'} successfully"
+    }
+
+@router.post("/{tracking_number}/interventions/security", response_model=InterventionResponse)
+async def toggle_security_hold(
+    tracking_number: str,
+    intervention: SecurityIntervention,
+    current_user = Depends(get_current_user_required),
+    db: Session = Depends(get_db)
+):
+    """Toggle security hold for a shipment"""
+    shipment = db.query(Shipment).filter(
+        Shipment.tracking_number == tracking_number.upper()
+    ).first()
+    
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    result = intervention_service.toggle_security_hold(
+        db, str(shipment.id), str(current_user.id)
+    )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to toggle security hold"))
+    
+    email_sent = await notification_service.trigger_intervention_notifications(
+        shipment, "security", intervention.action, db,
+        location=intervention.location,
+        notes=intervention.notes
+    )
+    
+    return {
+        "success": True,
+        "intervention_type": "security",
+        "action": intervention.action,
+        "new_state": result["security_hold_active"],
+        "timestamp": datetime.utcnow(),
+        "email_sent": email_sent,
+        "message": f"Security hold {'activated' if result['security_hold_active'] else 'deactivated'} successfully"
+    }
+
+@router.post("/{tracking_number}/interventions/damage", response_model=InterventionResponse)
+async def handle_damage(
+    tracking_number: str,
+    intervention: DamageIntervention,
+    current_user = Depends(get_current_user_required),
+    db: Session = Depends(get_db)
+):
+    """Report or resolve damage for a shipment"""
+    shipment = db.query(Shipment).filter(
+        Shipment.tracking_number == tracking_number.upper()
+    ).first()
+    
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if intervention.action == "report":
+        result = intervention_service.report_damage(
+            db, str(shipment.id), str(current_user.id), intervention.description
+        )
+        email_sent = await notification_service.trigger_intervention_notifications(
+            shipment, "damage", "report", db,
+            description=intervention.description
+        )
+    else:  # resolve
+        result = intervention_service.resolve_damage(
+            db, str(shipment.id), str(current_user.id), intervention.resolution_notes
+        )
+        email_sent = await notification_service.trigger_intervention_notifications(
+            shipment, "damage", "resolve", db,
+            resolution=intervention.resolution_notes
+        )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to process damage"))
+    
+    return {
+        "success": True,
+        "intervention_type": "damage",
+        "action": intervention.action,
+        "new_state": result.get("damage_reported", False),
+        "timestamp": datetime.utcnow(),
+        "email_sent": email_sent,
+        "message": f"Damage {intervention.action}d successfully"
+    }
+
+@router.post("/{tracking_number}/interventions/return", response_model=InterventionResponse)
+async def handle_return(
+    tracking_number: str,
+    intervention: ReturnIntervention,
+    current_user = Depends(get_current_user_required),
+    db: Session = Depends(get_db)
+):
+    """Initiate or cancel return for a shipment"""
+    shipment = db.query(Shipment).filter(
+        Shipment.tracking_number == tracking_number.upper()
+    ).first()
+    
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    result = intervention_service.initiate_return(
+        db, str(shipment.id), str(current_user.id), intervention.reason
+    )
+    
+    email_sent = await notification_service.trigger_intervention_notifications(
+        shipment, "return", "initiate", db,
+        reason=intervention.reason
+    )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to initiate return"))
+    
+    return {
+        "success": True,
+        "intervention_type": "return",
+        "action": "initiate",
+        "new_state": result["return_initiated"],
+        "timestamp": datetime.utcnow(),
+        "email_sent": email_sent,
+        "message": "Return initiated successfully"
+    }
+
+@router.post("/{tracking_number}/interventions/delay", response_model=InterventionResponse)
+async def handle_delay(
+    tracking_number: str,
+    intervention: DelayIntervention,
+    current_user = Depends(get_current_user_required),
+    db: Session = Depends(get_db)
+):
+    """Report or resolve delay for a shipment"""
+    shipment = db.query(Shipment).filter(
+        Shipment.tracking_number == tracking_number.upper()
+    ).first()
+    
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if intervention.action == "report":
+        result = intervention_service.report_delay(
+            db, str(shipment.id), str(current_user.id), 
+            intervention.reason, 1  # estimated days
+        )
+        email_sent = await notification_service.trigger_intervention_notifications(
+            shipment, "delay", "report", db,
+            reason=intervention.reason,
+            revised_eta=intervention.revised_eta
+        )
+    else:  # resolve
+        result = intervention_service.resolve_delay(
+            db, str(shipment.id), str(current_user.id)
+        )
+        email_sent = await notification_service.trigger_intervention_notifications(
+            shipment, "delay", "resolve", db
+        )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to process delay"))
+    
+    return {
+        "success": True,
+        "intervention_type": "delay",
+        "action": intervention.action,
+        "new_state": result.get("delay_active", False),
+        "timestamp": datetime.utcnow(),
+        "email_sent": email_sent,
+        "message": f"Delay {intervention.action}d successfully"
+    }
+
+# Export router
 shipments_router = router

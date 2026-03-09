@@ -1,3 +1,4 @@
+#app/api/deps.py
 """
 Authentication Dependencies
 Unified auth handling for all endpoints

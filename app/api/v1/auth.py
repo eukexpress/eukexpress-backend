@@ -1,3 +1,4 @@
+#app/api/v1/auth.py
 """
 Authentication Endpoints
 Admin login, logout, and password management
