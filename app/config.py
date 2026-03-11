@@ -42,11 +42,14 @@ class Settings(BaseSettings):
     EUKEXPRESS_FROM_NAME: str = "EukExpress Global Logistics"
     EUKEXPRESS_API_KEY_NAME: Optional[str] = "mail"
     
-    # File Uploads
+    # File Uploads - FIXED FOR LOCAL DEVELOPMENT
     MAX_UPLOAD_SIZE: int = 10485760
     ALLOWED_EXTENSIONS: str = ".jpg,.jpeg,.png"
-    UPLOAD_PATH: str = "/opt/render/project/src/frontend/uploads"
-    QR_CODE_PATH: str = "/opt/render/project/src/frontend/qr_codes"
+    
+    # Use absolute path for local development
+    BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    UPLOAD_PATH: str = os.path.join(os.path.dirname(BASE_DIR), "frontend", "uploads")
+    QR_CODE_PATH: str = os.path.join(os.path.dirname(BASE_DIR), "frontend", "qr_codes")
     
     # Security - JWT Settings
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
@@ -65,7 +68,7 @@ class Settings(BaseSettings):
     
     # Logging
     LOG_LEVEL: str = "WARNING"
-    LOG_FILE: str = "/opt/render/project/src/backend/logs/app.log"
+    LOG_FILE: str = os.path.join(BASE_DIR, "logs", "app.log")
     
     # Keep Alive
     RENDER_APP_URL: str = "https://eukexpress.onrender.com"
@@ -95,3 +98,5 @@ settings = Settings()
 os.makedirs(os.path.dirname(settings.LOG_FILE), exist_ok=True)
 os.makedirs(settings.UPLOAD_PATH, exist_ok=True)
 os.makedirs(settings.QR_CODE_PATH, exist_ok=True)
+os.makedirs(os.path.join(settings.UPLOAD_PATH, "invoices"), exist_ok=True)
+os.makedirs(os.path.join(settings.UPLOAD_PATH, "shipments"), exist_ok=True)

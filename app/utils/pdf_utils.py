@@ -1,13 +1,12 @@
 """
 PDF Utilities
-Helper functions for PDF generation - COMPLETE FIXED VERSION
+Helper functions for PDF generation - COMPLETE FIXED VERSION (NO WEASYPRINT)
 """
 
 import os
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, Union
-from weasyprint import HTML
 import base64
 
 logger = logging.getLogger(__name__)
@@ -68,7 +67,7 @@ def get_qr_code_path(qr_code_dir: str, tracking_number: str) -> str:
 
 def format_qr_code_url(qr_code_path: str) -> str:
     """
-    Format QR code path as file:// URL for WeasyPrint
+    Format QR code path as file:// URL for ReportLab
     
     Args:
         qr_code_path: Absolute path to QR code image
@@ -79,36 +78,6 @@ def format_qr_code_url(qr_code_path: str) -> str:
     if not qr_code_path:
         return ""
     return f"file://{qr_code_path}"
-
-def html_to_pdf(
-    html_content: str, 
-    output_path: str, 
-    base_url: Optional[str] = None
-) -> bool:
-    """
-    Convert HTML to PDF with error handling - FIXED for WeasyPrint 53.4 compatibility
-    
-    Args:
-        html_content: HTML string to convert
-        output_path: Path where PDF should be saved
-        base_url: Base URL for resolving relative URLs
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        # For WeasyPrint 53.4, this syntax works
-        if base_url:
-            HTML(string=html_content, base_url=base_url).write_pdf(output_path)
-        else:
-            HTML(string=html_content).write_pdf(output_path)
-        
-        logger.info(f"✅ PDF generated: {output_path}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ PDF conversion failed: {e}", exc_info=True)
-        return False
 
 def format_dimensions(dimensions: Optional[Dict[str, float]]) -> str:
     """

@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import inch, mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import qrcode
@@ -20,6 +20,37 @@ from io import BytesIO
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+def format_date_for_pdf(date_value):
+    """
+    Helper function to format date for PDF display
+    Handles both datetime objects and string dates
+    """
+    if not date_value:
+        return "N/A"
+    
+    # If it's already a datetime/date object with strftime method
+    if hasattr(date_value, 'strftime'):
+        try:
+            return date_value.strftime('%d %b, %Y')
+        except:
+            pass
+    
+    # If it's a string, try to parse it
+    if isinstance(date_value, str):
+        try:
+            # Try common date formats
+            for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"]:
+                try:
+                    date_obj = datetime.strptime(date_value, fmt)
+                    return date_obj.strftime('%d %b, %Y')
+                except:
+                    continue
+        except:
+            pass
+    
+    # Fallback: return as string
+    return str(date_value)
 
 async def generate_invoice_pdf(shipment):
     """
@@ -53,35 +84,57 @@ async def generate_invoice_pdf(shipment):
         # Container for the 'Flowable' objects
         story = []
         
-        # Get styles
+        # Get base styles
         styles = getSampleStyleSheet()
-        styles.add(ParagraphStyle(
-            name='RightAlign',
-            parent=styles['Normal'],
-            alignment=TA_RIGHT,
-        ))
-        styles.add(ParagraphStyle(
-            name='CenterAlign',
-            parent=styles['Normal'],
-            alignment=TA_CENTER,
-        ))
-        styles.add(ParagraphStyle(
-            name='Title',
-            parent=styles['Heading1'],
-            alignment=TA_CENTER,
-            textColor=colors.HexColor('#003366'),
-            fontSize=24,
-            spaceAfter=20,
-        ))
+        
+        # Define custom style names that don't conflict with existing ones
+        custom_styles = {
+            'CustomRightAlign': ParagraphStyle(
+                name='CustomRightAlign',
+                parent=styles['Normal'],
+                alignment=TA_RIGHT,
+                fontSize=10,
+            ),
+            'CustomCenterAlign': ParagraphStyle(
+                name='CustomCenterAlign',
+                parent=styles['Normal'],
+                alignment=TA_CENTER,
+                fontSize=10,
+            ),
+            'CustomTitle': ParagraphStyle(
+                name='CustomTitle',
+                parent=styles['Heading1'],
+                alignment=TA_CENTER,
+                textColor=colors.HexColor('#003366'),
+                fontSize=24,
+                spaceAfter=20,
+                fontName='Helvetica-Bold',
+            ),
+            'CustomNormal': ParagraphStyle(
+                name='CustomNormal',
+                parent=styles['Normal'],
+                fontSize=10,
+            ),
+            'CustomBold': ParagraphStyle(
+                name='CustomBold',
+                parent=styles['Normal'],
+                fontSize=10,
+                fontName='Helvetica-Bold',
+            ),
+        }
+        
+        # Add custom styles
+        for style in custom_styles.values():
+            styles.add(style)
         
         # ============================================
         # HEADER with Contact Info
         # ============================================
         header_data = [
-            [Paragraph("<b>EukExpress Global Logistics</b>", styles['Title'])],
-            [Paragraph("Contact US", styles['RightAlign'])],
-            [Paragraph(f"Address: {shipment.sender_address}", styles['RightAlign'])],
-            [Paragraph(f"Email: {shipment.sender_email}", styles['RightAlign'])],
+            [Paragraph("<b>EukExpress Global Logistics</b>", styles['CustomTitle'])],
+            [Paragraph("Contact US", styles['CustomRightAlign'])],
+            [Paragraph(f"Address: {shipment.sender_address}", styles['CustomRightAlign'])],
+            [Paragraph(f"Email: {shipment.sender_email}", styles['CustomRightAlign'])],
         ]
         header_table = Table(header_data, colWidths=[450])
         header_table.setStyle(TableStyle([
@@ -92,11 +145,13 @@ async def generate_invoice_pdf(shipment):
         story.append(Spacer(1, 20))
         
         # ============================================
-        # TRACKING SECTION
+        # TRACKING SECTION - FIXED DATE HANDLING
         # ============================================
+        sending_date_formatted = format_date_for_pdf(shipment.sending_date)
+        
         tracking_data = [
-            [Paragraph(f"<b>Tracking ID: {shipment.tracking_number}</b>", styles['Normal'])],
-            [Paragraph(f"Date of shipment: {shipment.sending_date.strftime('%d %b, %Y') if shipment.sending_date else 'N/A'}", styles['Normal'])],
+            [Paragraph(f"<b>Tracking ID: {shipment.tracking_number}</b>", styles['CustomBold'])],
+            [Paragraph(f"Date of shipment: {sending_date_formatted}", styles['CustomNormal'])],
         ]
         tracking_table = Table(tracking_data, colWidths=[450])
         tracking_table.setStyle(TableStyle([
@@ -128,8 +183,8 @@ async def generate_invoice_pdf(shipment):
         """
         
         parties_data = [
-            [Paragraph(sender_text, styles['Normal']), 
-             Paragraph(receiver_text, styles['Normal'])]
+            [Paragraph(sender_text, styles['CustomNormal']), 
+             Paragraph(receiver_text, styles['CustomNormal'])]
         ]
         
         parties_table = Table(parties_data, colWidths=[225, 225])
@@ -149,14 +204,14 @@ async def generate_invoice_pdf(shipment):
         # DESTINATION
         # ============================================
         dest_text = f"<b>Destination: {shipment.destination_location}</b>"
-        story.append(Paragraph(dest_text, styles['Normal']))
+        story.append(Paragraph(dest_text, styles['CustomBold']))
         story.append(Spacer(1, 10))
         
         # ============================================
         # COMMENTS / AMOUNT
         # ============================================
         comment_text = f"<b>Comments: {shipment.declared_currency} {shipment.declared_value or 0}</b>"
-        comment_para = Paragraph(comment_text, styles['Normal'])
+        comment_para = Paragraph(comment_text, styles['CustomNormal'])
         comment_table = Table([[comment_para]], colWidths=[450])
         comment_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#fff3cd')),
@@ -172,12 +227,12 @@ async def generate_invoice_pdf(shipment):
         # ============================================
         # PARCEL DESCRIPTION
         # ============================================
-        story.append(Paragraph("<b>PARCEL DESCRIPTION</b>", styles['Normal']))
+        story.append(Paragraph("<b>PARCEL DESCRIPTION</b>", styles['CustomBold']))
         story.append(Spacer(1, 10))
         
         # Format dimensions
         dimensions_display = "N/A"
-        if shipment.dimensions:
+        if hasattr(shipment, 'dimensions') and shipment.dimensions:
             dimensions_display = f"{shipment.dimensions.get('length', '')}x{shipment.dimensions.get('width', '')}x{shipment.dimensions.get('height', '')} cm"
         
         parcel_data = [
@@ -205,10 +260,11 @@ async def generate_invoice_pdf(shipment):
         story.append(Spacer(1, 20))
         
         # ============================================
-        # EXPECTED DELIVERY DATE
+        # EXPECTED DELIVERY DATE - FIXED DATE HANDLING
         # ============================================
-        delivery_text = f"<b>EXPECTED DATE OF DELIVERY: {shipment.estimated_delivery_date.strftime('%d %b %Y') if shipment.estimated_delivery_date else 'N/A'}</b>"
-        delivery_para = Paragraph(delivery_text, styles['CenterAlign'])
+        delivery_date_formatted = format_date_for_pdf(shipment.estimated_delivery_date)
+        delivery_text = f"<b>EXPECTED DATE OF DELIVERY: {delivery_date_formatted}</b>"
+        delivery_para = Paragraph(delivery_text, styles['CustomCenterAlign'])
         delivery_table = Table([[delivery_para]], colWidths=[450])
         delivery_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#003366')),
@@ -267,8 +323,8 @@ async def generate_invoice_pdf(shipment):
             qr_reportlab = Image(img_buffer, width=1.5*inch, height=1.5*inch)
             
             # Create a table to hold the QR code (right-aligned)
-            qr_data = [[qr_reportlab]]
-            qr_table = Table(qr_data, colWidths=[450])
+            qr_data_table = [[qr_reportlab]]
+            qr_table = Table(qr_data_table, colWidths=[450])
             qr_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (0, 0), 'RIGHT'),
             ]))
