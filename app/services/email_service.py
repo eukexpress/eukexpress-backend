@@ -1,6 +1,6 @@
 ﻿"""
 EukExpress Email Service
-Handles all email sending operations using Resend - COMPLETE FIXED VERSION WITH VISIBLE PDF ATTACHMENT
+Handles all email sending operations using Resend - COMPLETE FIXED VERSION WITH PDF FOR BOTH
 """
 import logging
 import resend
@@ -140,10 +140,10 @@ class EmailService:
             html_content=html_content
         )
     
-    async def send_invoice_pdf(self, shipment, pdf_path):
+    async def send_invoice_pdf(self, shipment, pdf_path, recipient_email=None):
         """
-        Send invoice PDF as attachment to BOTH sender and recipient
-        The PDF file is ATTACHED to the email, not just a link
+        Send invoice PDF as attachment to sender (and optionally recipient)
+        This is used for the SENDER email
         """
         try:
             with open(pdf_path, 'rb') as f:
@@ -152,8 +152,10 @@ class EmailService:
             # Convert bytes to base64 for Resend
             pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
             
-            # Send to BOTH sender and recipient
-            to_emails = [shipment.sender_email, shipment.recipient_email]
+            # Determine who to send to - always include sender
+            to_emails = [shipment.sender_email]
+            if recipient_email:
+                to_emails.append(recipient_email)
             
             html_content = f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -162,8 +164,8 @@ class EmailService:
                 </div>
                 <div style="padding: 20px;">
                     <h2 style="color: #1e293b;">Shipment Created Successfully</h2>
-                    <p>Dear Customer,</p>
-                    <p>A shipment has been created with tracking number <strong>{shipment.tracking_number}</strong>.</p>
+                    <p>Dear {shipment.sender_name},</p>
+                    <p>Your shipment has been created with tracking number <strong>{shipment.tracking_number}</strong>.</p>
                     
                     <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #1e3c72; margin: 20px 0;">
                         <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
@@ -174,8 +176,7 @@ class EmailService:
                     
                     <div style="background-color: #e6f7e6; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #28a745;">
                         <p style="margin: 0; font-size: 16px; color: #1e3c72;">
-                            <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email. 
-                            Please check your email client for the attached file.
+                            <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email.
                         </p>
                     </div>
                     
@@ -200,7 +201,7 @@ class EmailService:
             )
             
             if result.get("success"):
-                logger.info(f"✅ Invoice PDF sent to both sender and recipient: {shipment.sender_email}, {shipment.recipient_email}")
+                logger.info(f"✅ Invoice PDF sent to sender: {shipment.sender_email}")
             
             return result
             
@@ -210,8 +211,8 @@ class EmailService:
     
     async def send_shipment_created_notification(self, shipment, pdf_path=None):
         """
-        Send notification to recipient about new shipment with PDF ATTACHED
-        The PDF file is ATTACHED to the email, not just a link
+        Send notification to recipient about new shipment with PDF attached
+        This is used for the RECIPIENT email
         """
         try:
             # Prepare PDF attachment if available
@@ -228,9 +229,9 @@ class EmailService:
                     'content_type': 'application/pdf'
                 })
                 has_pdf = True
-                logger.info(f"✅ PDF attached to email: {pdf_path}")
+                logger.info(f"✅ PDF attached to recipient email: {pdf_path}")
             else:
-                logger.warning(f"⚠️ PDF not found at {pdf_path}, sending without attachment")
+                logger.warning(f"⚠️ PDF not found for recipient, sending without attachment")
             
             # Email HTML content - clearly indicates PDF is attached with visible notice
             pdf_notice = ""
@@ -285,12 +286,12 @@ class EmailService:
             if result.get("success"):
                 logger.info(f"✅ Email with PDF attachment sent to recipient: {shipment.recipient_email}")
             else:
-                logger.error(f"❌ Failed to send email: {result.get('error')}")
+                logger.error(f"❌ Failed to send email to recipient: {result.get('error')}")
             
             return result
             
         except Exception as e:
-            logger.error(f"❌ Error sending shipment notification: {e}", exc_info=True)
+            logger.error(f"❌ Error sending shipment notification to recipient: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def send_status_update_notification(self, shipment, old_status, new_status, location=None, notes=None):

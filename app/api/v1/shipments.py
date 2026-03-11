@@ -127,7 +127,7 @@ async def create_shipment(
         front_image_path=front_image_path,
         rear_image_path=rear_image_path,
         front_image_hash=front_image_hash,
-        rear_image_hash=rear_image_hash  # FIXED: was rear_imageHash
+        rear_image_hash=rear_image_hash
     )
     
     db.add(new_shipment)
@@ -146,6 +146,7 @@ async def create_shipment(
     
     # Initialize pdf_result variable
     pdf_result = None
+    pdf_generated = False
     
     # Generate invoice PDF
     try:
@@ -155,44 +156,65 @@ async def create_shipment(
             new_shipment.invoice_pdf_path = pdf_result["path"]
             db.commit()
             logger.info(f"✅ PDF generated: {pdf_result['path']}")
-            
-            # Send invoice PDF via email to sender
-            logger.info(f"📧 Sending invoice PDF to sender: {new_shipment.sender_email}")
-            invoice_result = await email_service.send_invoice_pdf(new_shipment, pdf_result["path"])
-            if invoice_result and invoice_result.get("success"):
-                logger.info(f"✅ Invoice email sent to sender: {invoice_result.get('id')}")
-            else:
-                error_msg = invoice_result.get('error') if invoice_result else "Unknown error"
-                logger.error(f"❌ Failed to send invoice: {error_msg}")
+            pdf_generated = True
         else:
             logger.error(f"❌ PDF generation failed: {pdf_result.get('error')}")
     except Exception as e:
-        logger.error(f"❌ PDF generation or email failed: {e}", exc_info=True)
+        logger.error(f"❌ PDF generation failed: {e}", exc_info=True)
     
-    # Send notification to recipient with PDF attached
+    # ============================================
+    # SEND EMAIL TO SENDER (ALWAYS)
+    # ============================================
     try:
-        logger.info(f"📧 Sending notification with PDF to recipient: {new_shipment.recipient_email}")
+        logger.info(f"📧 Sending email to SENDER: {new_shipment.sender_email}")
         
-        # Check if PDF was generated successfully
-        if pdf_result and pdf_result.get("success"):
-            notification_result = await email_service.send_shipment_created_notification(
+        if pdf_generated and pdf_result and pdf_result.get("path"):
+            # Send invoice PDF to sender
+            sender_result = await email_service.send_invoice_pdf(
                 new_shipment, 
                 pdf_result["path"]
             )
-            logger.info(f"✅ Notification with PDF sent to recipient: {new_shipment.recipient_email}")
+            logger.info(f"✅ Invoice email sent to sender: {new_shipment.sender_email}")
         else:
-            # Fallback to without PDF
-            logger.warning(f"⚠️ PDF not available, sending notification without attachment")
-            notification_result = await email_service.send_shipment_created_notification(new_shipment)
+            # Send notification without PDF (fallback)
+            logger.warning(f"⚠️ PDF not available, sending notification to sender without attachment")
+            sender_result = await email_service.send_shipment_created_notification(new_shipment)
             
-        if notification_result and notification_result.get("success"):
-            logger.info(f"✅ Email sent successfully: {notification_result.get('id')}")
+        if sender_result and sender_result.get("success"):
+            logger.info(f"✅ Email to sender successful: {sender_result.get('id')}")
         else:
-            error_msg = notification_result.get('error') if notification_result else "Unknown error"
-            logger.error(f"❌ Failed to send email: {error_msg}")
+            error_msg = sender_result.get('error') if sender_result else "Unknown error"
+            logger.error(f"❌ Failed to send email to sender: {error_msg}")
             
     except Exception as e:
-        logger.error(f"❌ Notification email failed: {e}", exc_info=True)
+        logger.error(f"❌ Sender email failed: {e}", exc_info=True)
+    
+    # ============================================
+    # SEND EMAIL TO RECIPIENT (ALWAYS)
+    # ============================================
+    try:
+        logger.info(f"📧 Sending email to RECIPIENT: {new_shipment.recipient_email}")
+        
+        if pdf_generated and pdf_result and pdf_result.get("path"):
+            # Send invoice PDF to recipient
+            recipient_result = await email_service.send_shipment_created_notification(
+                new_shipment, 
+                pdf_result["path"]
+            )
+            logger.info(f"✅ Invoice email sent to recipient: {new_shipment.recipient_email}")
+        else:
+            # Send notification without PDF (fallback)
+            logger.warning(f"⚠️ PDF not available, sending notification to recipient without attachment")
+            recipient_result = await email_service.send_shipment_created_notification(new_shipment)
+            
+        if recipient_result and recipient_result.get("success"):
+            logger.info(f"✅ Email to recipient successful: {recipient_result.get('id')}")
+        else:
+            error_msg = recipient_result.get('error') if recipient_result else "Unknown error"
+            logger.error(f"❌ Failed to send email to recipient: {error_msg}")
+            
+    except Exception as e:
+        logger.error(f"❌ Recipient email failed: {e}", exc_info=True)
     
     logger.info(f"📦 Shipment created: {tracking_number}")
     
