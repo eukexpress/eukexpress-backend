@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\api\v1\interventions.py
 """
 Intervention Toggle Endpoints
 All intervention controls for shipments
@@ -16,7 +15,7 @@ from app.schemas.intervention import (
     ReturnIntervention, DelayIntervention, InterventionResponse
 )
 from app.api.v1.auth import oauth2_scheme
-from app.services import auth_service, notification_service
+from app.services import auth_service, email_service
 from app.utils.constants import INTERVENTION_TYPES
 
 router = APIRouter()
@@ -47,6 +46,8 @@ async def toggle_customs(
     previous_state = shipment.customs_bond_active
     now = datetime.utcnow()
     
+    email_sent = False
+    
     # Update based on action
     if intervention.action == "activate":
         shipment.customs_bond_active = True
@@ -67,10 +68,20 @@ async def toggle_customs(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "customs", "activate", db
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending customs activation email for {tracking}")
+            email_sent = await email_service.send_customs_notification(
+                shipment, "activate", 
+                {
+                    "location": intervention.location,
+                    "reference": intervention.reference,
+                    "notes": intervention.notes
+                }
+            )
+            logger.info(f"✅ Customs activation email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send customs activation email: {e}", exc_info=True)
         
     elif intervention.action == "release":
         shipment.customs_bond_active = False
@@ -88,15 +99,19 @@ async def toggle_customs(
         )
         db.add(log)
         
-        # Calculate duration
-        duration = None
-        if shipment.customs_bond_activated_at:
-            duration = now - shipment.customs_bond_activated_at
-        
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "customs", "release", db, duration=duration
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending customs release email for {tracking}")
+            email_sent = await email_service.send_customs_notification(
+                shipment, "release",
+                {
+                    "location": intervention.location,
+                    "notes": intervention.notes
+                }
+            )
+            logger.info(f"✅ Customs release email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send customs release email: {e}", exc_info=True)
     
     # Update shipment
     shipment.status_updated_at = now
@@ -110,7 +125,7 @@ async def toggle_customs(
         action=intervention.action,
         new_state=shipment.customs_bond_active,
         timestamp=now,
-        email_sent=True,
+        email_sent=email_sent,
         message=f"Customs bond {intervention.action}d successfully"
     )
 
@@ -139,6 +154,8 @@ async def toggle_security(
     previous_state = shipment.security_hold_active
     now = datetime.utcnow()
     
+    email_sent = False
+    
     # Update based on action
     if intervention.action == "activate":
         shipment.security_hold_active = True
@@ -158,10 +175,17 @@ async def toggle_security(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "security", "activate", db
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending security activation email for {tracking}")
+            email_sent = await email_service.send_security_notification(
+                shipment, "activate",
+                location=intervention.location,
+                notes=intervention.notes
+            )
+            logger.info(f"✅ Security activation email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send security activation email: {e}", exc_info=True)
         
     elif intervention.action == "clear":
         shipment.security_hold_active = False
@@ -179,10 +203,16 @@ async def toggle_security(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "security", "clear", db
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending security clear email for {tracking}")
+            email_sent = await email_service.send_security_notification(
+                shipment, "clear",
+                notes=intervention.notes
+            )
+            logger.info(f"✅ Security clear email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send security clear email: {e}", exc_info=True)
     
     # Update shipment
     shipment.status_updated_at = now
@@ -196,7 +226,7 @@ async def toggle_security(
         action=intervention.action,
         new_state=shipment.security_hold_active,
         timestamp=now,
-        email_sent=True,
+        email_sent=email_sent,
         message=f"Security hold {intervention.action}d successfully"
     )
 
@@ -225,6 +255,8 @@ async def report_damage(
     previous_state = shipment.damage_reported
     now = datetime.utcnow()
     
+    email_sent = False
+    
     # Update based on action
     if intervention.action == "report":
         shipment.damage_reported = True
@@ -243,10 +275,15 @@ async def report_damage(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "damage", "report", db
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending damage report email for {tracking}")
+            email_sent = await email_service.send_damage_notification(
+                shipment, "report", description=intervention.description
+            )
+            logger.info(f"✅ Damage report email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send damage report email: {e}", exc_info=True)
         
     elif intervention.action == "resolve":
         shipment.damage_reported = False
@@ -265,10 +302,15 @@ async def report_damage(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "damage", "resolve", db
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending damage resolve email for {tracking}")
+            email_sent = await email_service.send_damage_notification(
+                shipment, "resolve", resolution=intervention.resolution_notes
+            )
+            logger.info(f"✅ Damage resolve email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send damage resolve email: {e}", exc_info=True)
     
     # Update shipment
     shipment.status_updated_at = now
@@ -282,7 +324,7 @@ async def report_damage(
         action=intervention.action,
         new_state=shipment.damage_reported,
         timestamp=now,
-        email_sent=True,
+        email_sent=email_sent,
         message=f"Damage {intervention.action}ed successfully"
     )
 
@@ -311,6 +353,8 @@ async def initiate_return(
     previous_state = shipment.return_active
     now = datetime.utcnow()
     
+    email_sent = False
+    
     # Update based on action
     if intervention.action == "initiate":
         shipment.return_active = True
@@ -329,10 +373,15 @@ async def initiate_return(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "return", "initiate", db
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending return initiation email for {tracking}")
+            email_sent = await email_service.send_return_notification(
+                shipment, reason=intervention.reason
+            )
+            logger.info(f"✅ Return initiation email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send return email: {e}", exc_info=True)
     
     # Update shipment
     shipment.status_updated_at = now
@@ -346,7 +395,7 @@ async def initiate_return(
         action=intervention.action,
         new_state=shipment.return_active,
         timestamp=now,
-        email_sent=True,
+        email_sent=email_sent,
         message="Return to sender initiated successfully"
     )
 
@@ -375,6 +424,8 @@ async def report_delay(
     previous_state = shipment.delay_active
     now = datetime.utcnow()
     
+    email_sent = False
+    
     # Update based on action
     if intervention.action == "report":
         shipment.delay_active = True
@@ -397,12 +448,17 @@ async def report_delay(
         )
         db.add(log)
         
-        # Trigger notification
-        await notification_service.trigger_intervention_notifications(
-            shipment, "delay", "report", db,
-            reason=intervention.reason,
-            revised_eta=intervention.revised_eta
-        )
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending delay report email for {tracking}")
+            email_sent = await email_service.send_delay_notification(
+                shipment, "report", 
+                reason=intervention.reason,
+                revised_eta=intervention.revised_eta.isoformat() if intervention.revised_eta else None
+            )
+            logger.info(f"✅ Delay report email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send delay report email: {e}", exc_info=True)
         
     elif intervention.action == "resolve":
         shipment.delay_active = False
@@ -418,6 +474,16 @@ async def report_delay(
             notes=intervention.notes
         )
         db.add(log)
+        
+        # Send email notification
+        try:
+            logger.info(f"📧 Sending delay resolve email for {tracking}")
+            email_sent = await email_service.send_delay_notification(
+                shipment, "resolve"
+            )
+            logger.info(f"✅ Delay resolve email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send delay resolve email: {e}", exc_info=True)
     
     # Update shipment
     shipment.status_updated_at = now
@@ -431,6 +497,6 @@ async def report_delay(
         action=intervention.action,
         new_state=shipment.delay_active,
         timestamp=now,
-        email_sent=True,
+        email_sent=email_sent,
         message=f"Delay {intervention.action}ed successfully"
     )

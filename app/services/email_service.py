@@ -5,6 +5,7 @@ Handles all email sending operations using Resend
 import logging
 import resend
 from typing import List, Optional, Dict, Any
+import asyncio
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class EmailService:
         else:
             logger.error("❌ No Resend API key found - email sending will fail")
     
-    def send_email(
+    async def send_email(
         self,
         to: List[str],
         subject: str,
@@ -33,9 +34,10 @@ class EmailService:
         text_content: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Send an email using Resend"""
+        """Send an email using Resend - NOW ASYNC"""
         try:
             if not self.api_key:
+                logger.error("❌ Resend API key not configured")
                 return {"success": False, "error": "Resend API key not configured"}
             
             # Prepare email params
@@ -52,18 +54,24 @@ class EmailService:
             if attachments:
                 params["attachments"] = attachments
             
-            # Send email
+            # Send email - run in thread pool to avoid blocking
             logger.info(f"📧 Sending email to: {to}, subject: {subject}")
-            response = resend.Emails.send(params)
+            
+            # Run synchronous Resend call in thread pool
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                lambda: resend.Emails.send(params)
+            )
             
             logger.info(f"✅ Email sent successfully: {response['id']}")
             return {"success": True, "id": response["id"]}
             
         except Exception as e:
-            logger.error(f"❌ Error sending email: {e}")
+            logger.error(f"❌ Error sending email: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
     
-    def send_test_email(self, to: str) -> Dict[str, Any]:
+    async def send_test_email(self, to: str) -> Dict[str, Any]:
         """Send a test email"""
         html_content = """
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -84,7 +92,7 @@ class EmailService:
         
         text_content = "EukExpress Global Logistics - Test Email\n\nThis is a test email from EukExpress. If you received this, the email service is working correctly."
         
-        return self.send_email(
+        return await self.send_email(
             to=[to],
             subject="EukExpress - Test Email",
             html_content=html_content,
@@ -121,7 +129,7 @@ class EmailService:
             </div>
             """
             
-            return self.send_email(
+            return await self.send_email(
                 to=[shipment.sender_email],
                 subject=f"Invoice for Shipment {shipment.tracking_number}",
                 html_content=html_content,
@@ -132,12 +140,23 @@ class EmailService:
                 }]
             )
         except Exception as e:
-            logger.error(f"Error sending invoice PDF: {e}")
+            logger.error(f"Error sending invoice PDF: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def send_customs_notification(self, shipment, action, data=None):
         """Send customs bond notification"""
         action_text = "activated" if action == "activate" else "released"
+        
+        # Build location/reference details
+        details = ""
+        if data:
+            if data.get('location'):
+                details += f"<p><strong>Location:</strong> {data['location']}</p>"
+            if data.get('reference'):
+                details += f"<p><strong>Reference:</strong> {data['reference']}</p>"
+            if data.get('notes'):
+                details += f"<p><strong>Notes:</strong> {data['notes']}</p>"
+        
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -151,9 +170,7 @@ class EmailService:
                 <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #FF6B35; margin: 20px 0;">
                     <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
                     <p><strong>Status:</strong> Customs Bond {action_text.capitalize()}</p>
-                    {f'<p><strong>Location:</strong> {data.get("location")}</p>' if data and data.get('location') else ''}
-                    {f'<p><strong>Reference:</strong> {data.get("reference")}</p>' if data and data.get('reference') else ''}
-                    {f'<p><strong>Notes:</strong> {data.get("notes")}</p>' if data and data.get('notes') else ''}
+                    {details}
                 </div>
                 
                 <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
@@ -164,19 +181,23 @@ class EmailService:
         </div>
         """
         
-        # Send to both
-        self.send_email(
+        # Send to sender
+        result1 = await self.send_email(
             to=[shipment.sender_email],
             subject=f"Shipment {shipment.tracking_number} - Customs Bond {action_text}",
             html_content=html_content
         )
         
+        # Send to recipient if different
+        result2 = {"success": True}
         if shipment.sender_email != shipment.recipient_email:
-            self.send_email(
+            result2 = await self.send_email(
                 to=[shipment.recipient_email],
                 subject=f"Shipment {shipment.tracking_number} - Customs Bond {action_text}",
                 html_content=html_content
             )
+        
+        return result1["success"] and result2["success"]
     
     async def send_shipment_created_notification(self, shipment):
         """Send notification to recipient about new shipment"""
@@ -205,7 +226,7 @@ class EmailService:
         </div>
         """
         
-        return self.send_email(
+        return await self.send_email(
             to=[shipment.recipient_email],
             subject=f"Shipment {shipment.tracking_number} Created for You",
             html_content=html_content
@@ -213,6 +234,9 @@ class EmailService:
     
     async def send_status_update_notification(self, shipment, old_status, new_status, location=None, notes=None):
         """Send status update notification to both parties"""
+        location_html = f"<p><strong>Location:</strong> {location}</p>" if location else ""
+        notes_html = f"<p><strong>Notes:</strong> {notes}</p>" if notes else ""
+        
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -227,8 +251,8 @@ class EmailService:
                     <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
                     <p><strong>Previous Status:</strong> {old_status}</p>
                     <p><strong>New Status:</strong> {new_status}</p>
-                    {f'<p><strong>Location:</strong> {location}</p>' if location else ''}
-                    {f'<p><strong>Notes:</strong> {notes}</p>' if notes else ''}
+                    {location_html}
+                    {notes_html}
                 </div>
                 
                 <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
@@ -240,23 +264,33 @@ class EmailService:
         """
         
         # Send to sender
-        self.send_email(
+        result1 = await self.send_email(
             to=[shipment.sender_email],
             subject=f"Shipment {shipment.tracking_number} - Status Update",
             html_content=html_content
         )
         
         # Send to recipient if different
+        result2 = {"success": True}
         if shipment.sender_email != shipment.recipient_email:
-            self.send_email(
+            result2 = await self.send_email(
                 to=[shipment.recipient_email],
                 subject=f"Shipment {shipment.tracking_number} - Status Update",
                 html_content=html_content
             )
+        
+        return result1["success"] and result2["success"]
     
     async def send_damage_notification(self, shipment, action, description=None, resolution=None):
         """Send damage notification"""
         action_text = "reported" if action == "report" else "resolved"
+        
+        details = ""
+        if description:
+            details += f"<p><strong>Description:</strong> {description}</p>"
+        if resolution:
+            details += f"<p><strong>Resolution:</strong> {resolution}</p>"
+        
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -269,8 +303,7 @@ class EmailService:
                 
                 <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #FF6B35; margin: 20px 0;">
                     <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
-                    {f'<p><strong>Description:</strong> {description}</p>' if description else ''}
-                    {f'<p><strong>Resolution:</strong> {resolution}</p>' if resolution else ''}
+                    {details}
                 </div>
                 
                 <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
@@ -281,23 +314,34 @@ class EmailService:
         </div>
         """
         
-        # Send to both
-        self.send_email(
+        # Send to sender
+        result1 = await self.send_email(
             to=[shipment.sender_email],
             subject=f"Shipment {shipment.tracking_number} - Damage {action_text}",
             html_content=html_content
         )
         
+        # Send to recipient if different
+        result2 = {"success": True}
         if shipment.sender_email != shipment.recipient_email:
-            self.send_email(
+            result2 = await self.send_email(
                 to=[shipment.recipient_email],
                 subject=f"Shipment {shipment.tracking_number} - Damage {action_text}",
                 html_content=html_content
             )
+        
+        return result1["success"] and result2["success"]
     
     async def send_delay_notification(self, shipment, action, reason=None, revised_eta=None):
         """Send delay notification"""
         action_text = "reported" if action == "report" else "resolved"
+        
+        details = ""
+        if reason:
+            details += f"<p><strong>Reason:</strong> {reason}</p>"
+        if revised_eta:
+            details += f"<p><strong>Revised ETA:</strong> {revised_eta}</p>"
+        
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -310,8 +354,7 @@ class EmailService:
                 
                 <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #FF6B35; margin: 20px 0;">
                     <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
-                    {f'<p><strong>Reason:</strong> {reason}</p>' if reason else ''}
-                    {f'<p><strong>Revised ETA:</strong> {revised_eta}</p>' if revised_eta else ''}
+                    {details}
                 </div>
                 
                 <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
@@ -322,23 +365,34 @@ class EmailService:
         </div>
         """
         
-        # Send to both
-        self.send_email(
+        # Send to sender
+        result1 = await self.send_email(
             to=[shipment.sender_email],
             subject=f"Shipment {shipment.tracking_number} - Delay {action_text}",
             html_content=html_content
         )
         
+        # Send to recipient if different
+        result2 = {"success": True}
         if shipment.sender_email != shipment.recipient_email:
-            self.send_email(
+            result2 = await self.send_email(
                 to=[shipment.recipient_email],
                 subject=f"Shipment {shipment.tracking_number} - Delay {action_text}",
                 html_content=html_content
             )
+        
+        return result1["success"] and result2["success"]
     
     async def send_security_notification(self, shipment, action, location=None, notes=None):
         """Send security hold notification"""
         action_text = "activated" if action == "activate" else "cleared"
+        
+        details = ""
+        if location:
+            details += f"<p><strong>Location:</strong> {location}</p>"
+        if notes:
+            details += f"<p><strong>Notes:</strong> {notes}</p>"
+        
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -351,8 +405,7 @@ class EmailService:
                 
                 <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #FF6B35; margin: 20px 0;">
                     <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
-                    {f'<p><strong>Location:</strong> {location}</p>' if location else ''}
-                    {f'<p><strong>Notes:</strong> {notes}</p>' if notes else ''}
+                    {details}
                 </div>
                 
                 <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
@@ -363,22 +416,28 @@ class EmailService:
         </div>
         """
         
-        # Send to both
-        self.send_email(
+        # Send to sender
+        result1 = await self.send_email(
             to=[shipment.sender_email],
             subject=f"Shipment {shipment.tracking_number} - Security Hold {action_text}",
             html_content=html_content
         )
         
+        # Send to recipient if different
+        result2 = {"success": True}
         if shipment.sender_email != shipment.recipient_email:
-            self.send_email(
+            result2 = await self.send_email(
                 to=[shipment.recipient_email],
                 subject=f"Shipment {shipment.tracking_number} - Security Hold {action_text}",
                 html_content=html_content
             )
+        
+        return result1["success"] and result2["success"]
     
     async def send_return_notification(self, shipment, reason=None):
         """Send return notification"""
+        reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
+        
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -391,7 +450,7 @@ class EmailService:
                 
                 <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #FF6B35; margin: 20px 0;">
                     <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
-                    {f'<p><strong>Reason:</strong> {reason}</p>' if reason else ''}
+                    {reason_html}
                 </div>
                 
                 <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
@@ -402,19 +461,23 @@ class EmailService:
         </div>
         """
         
-        # Send to both
-        self.send_email(
+        # Send to sender
+        result1 = await self.send_email(
             to=[shipment.sender_email],
             subject=f"Shipment {shipment.tracking_number} - Return Initiated",
             html_content=html_content
         )
         
+        # Send to recipient if different
+        result2 = {"success": True}
         if shipment.sender_email != shipment.recipient_email:
-            self.send_email(
+            result2 = await self.send_email(
                 to=[shipment.recipient_email],
                 subject=f"Shipment {shipment.tracking_number} - Return Initiated",
                 html_content=html_content
             )
+        
+        return result1["success"] and result2["success"]
     
     async def send_custom_message(self, tracking_number, recipient_email, recipient_name, subject, message, include_tracking_link=True):
         """Send custom message to specific recipient"""
@@ -439,7 +502,7 @@ class EmailService:
         </div>
         """
         
-        return self.send_email(
+        return await self.send_email(
             to=[recipient_email],
             subject=subject,
             html_content=html_content

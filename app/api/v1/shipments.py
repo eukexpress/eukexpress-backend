@@ -20,7 +20,7 @@ from app.schemas.intervention import (
     ReturnIntervention, DelayIntervention, InterventionResponse
 )
 from app.api.deps import get_current_user_required
-from app.services import intervention_service, email_service, qr_service, pdf_service, notification_service
+from app.services import intervention_service, email_service, qr_service, pdf_service
 from app.utils.constants import SHIPMENT_STATUSES, STATUS_COLORS
 
 router = APIRouter(tags=["Shipments"])
@@ -140,26 +140,43 @@ async def create_shipment(
         if qr_path:
             new_shipment.qr_code_path = qr_path
             db.commit()
+            logger.info(f"✅ QR code generated for {tracking_number}")
     except Exception as e:
-        logger.error(f"QR code generation failed: {e}")
+        logger.error(f"❌ QR code generation failed: {e}")
     
     # Generate invoice PDF
     try:
+        logger.info(f"📄 Generating invoice PDF for {tracking_number}")
         pdf_result = await pdf_service.generate_invoice_pdf(new_shipment)
         if pdf_result["success"]:
             new_shipment.invoice_pdf_path = pdf_result["path"]
             db.commit()
+            logger.info(f"✅ PDF generated: {pdf_result['path']}")
             
-            # Send invoice PDF via email
-            await email_service.send_invoice_pdf(new_shipment, pdf_result["path"])
+            # Send invoice PDF via email to sender
+            logger.info(f"📧 Sending invoice PDF to sender: {new_shipment.sender_email}")
+            invoice_result = await email_service.send_invoice_pdf(new_shipment, pdf_result["path"])
+            if invoice_result and invoice_result.get("success"):
+                logger.info(f"✅ Invoice email sent to sender: {invoice_result.get('id')}")
+            else:
+                error_msg = invoice_result.get('error') if invoice_result else "Unknown error"
+                logger.error(f"❌ Failed to send invoice: {error_msg}")
+        else:
+            logger.error(f"❌ PDF generation failed: {pdf_result.get('error')}")
     except Exception as e:
-        logger.error(f"PDF generation failed: {e}")
+        logger.error(f"❌ PDF generation or email failed: {e}", exc_info=True)
     
     # Send notification to recipient
     try:
-        await email_service.send_shipment_created_notification(new_shipment)
+        logger.info(f"📧 Sending notification to recipient: {new_shipment.recipient_email}")
+        notification_result = await email_service.send_shipment_created_notification(new_shipment)
+        if notification_result and notification_result.get("success"):
+            logger.info(f"✅ Notification email sent to recipient: {notification_result.get('id')}")
+        else:
+            error_msg = notification_result.get('error') if notification_result else "Unknown error"
+            logger.error(f"❌ Failed to send notification: {error_msg}")
     except Exception as e:
-        logger.error(f"Notification email failed: {e}")
+        logger.error(f"❌ Notification email failed: {e}", exc_info=True)
     
     logger.info(f"📦 Shipment created: {tracking_number}")
     
@@ -379,10 +396,15 @@ async def update_status(
     db.commit()
     
     # Send notification
-    await email_service.send_status_update_notification(
-        shipment, old_status, status_update.status, 
-        status_update.location, status_update.notes
-    )
+    try:
+        logger.info(f"📧 Sending status update email for {tracking_number}")
+        await email_service.send_status_update_notification(
+            shipment, old_status, status_update.status, 
+            status_update.location, status_update.notes
+        )
+        logger.info(f"✅ Status update email sent for {tracking_number}")
+    except Exception as e:
+        logger.error(f"❌ Failed to send status update email: {e}", exc_info=True)
     
     return {
         "success": True,
@@ -467,14 +489,20 @@ async def toggle_customs_bond(
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to toggle customs bond"))
     
     # Send email notification
-    email_sent = await email_service.send_customs_notification(
-        shipment, intervention.action, 
-        {
-            "location": intervention.location,
-            "reference": intervention.reference,
-            "notes": intervention.notes
-        }
-    )
+    email_sent = False
+    try:
+        logger.info(f"📧 Sending customs {intervention.action} email for {tracking_number}")
+        email_sent = await email_service.send_customs_notification(
+            shipment, intervention.action, 
+            {
+                "location": intervention.location,
+                "reference": intervention.reference,
+                "notes": intervention.notes
+            }
+        )
+        logger.info(f"✅ Customs {intervention.action} email sent: {email_sent}")
+    except Exception as e:
+        logger.error(f"❌ Failed to send customs email: {e}", exc_info=True)
     
     return {
         "success": True,
@@ -482,7 +510,7 @@ async def toggle_customs_bond(
         "action": intervention.action,
         "new_state": result["customs_bond_active"],
         "timestamp": datetime.utcnow(),
-        "email_sent": True,
+        "email_sent": email_sent,
         "message": f"Customs bond {'activated' if result['customs_bond_active'] else 'deactivated'} successfully"
     }
 
@@ -508,11 +536,17 @@ async def toggle_security_hold(
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to toggle security hold"))
     
-    email_sent = await email_service.send_security_notification(
-        shipment, intervention.action,
-        location=intervention.location,
-        notes=intervention.notes
-    )
+    email_sent = False
+    try:
+        logger.info(f"📧 Sending security {intervention.action} email for {tracking_number}")
+        email_sent = await email_service.send_security_notification(
+            shipment, intervention.action,
+            location=intervention.location,
+            notes=intervention.notes
+        )
+        logger.info(f"✅ Security {intervention.action} email sent: {email_sent}")
+    except Exception as e:
+        logger.error(f"❌ Failed to send security email: {e}", exc_info=True)
     
     return {
         "success": True,
@@ -520,7 +554,7 @@ async def toggle_security_hold(
         "action": intervention.action,
         "new_state": result["security_hold_active"],
         "timestamp": datetime.utcnow(),
-        "email_sent": True,
+        "email_sent": email_sent,
         "message": f"Security hold {'activated' if result['security_hold_active'] else 'deactivated'} successfully"
     }
 
@@ -539,20 +573,32 @@ async def handle_damage(
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
     
+    email_sent = False
+    
     if intervention.action == "report":
         result = intervention_service.report_damage(
             db, str(shipment.id), str(current_user.id), intervention.description
         )
-        email_sent = await email_service.send_damage_notification(
-            shipment, "report", description=intervention.description
-        )
+        try:
+            logger.info(f"📧 Sending damage report email for {tracking_number}")
+            email_sent = await email_service.send_damage_notification(
+                shipment, "report", description=intervention.description
+            )
+            logger.info(f"✅ Damage report email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send damage report email: {e}", exc_info=True)
     else:  # resolve
         result = intervention_service.resolve_damage(
             db, str(shipment.id), str(current_user.id), intervention.resolution_notes
         )
-        email_sent = await email_service.send_damage_notification(
-            shipment, "resolve", resolution=intervention.resolution_notes
-        )
+        try:
+            logger.info(f"📧 Sending damage resolve email for {tracking_number}")
+            email_sent = await email_service.send_damage_notification(
+                shipment, "resolve", resolution=intervention.resolution_notes
+            )
+            logger.info(f"✅ Damage resolve email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send damage resolve email: {e}", exc_info=True)
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to process damage"))
@@ -563,7 +609,7 @@ async def handle_damage(
         "action": intervention.action,
         "new_state": result.get("damage_reported", False),
         "timestamp": datetime.utcnow(),
-        "email_sent": True,
+        "email_sent": email_sent,
         "message": f"Damage {intervention.action}ed successfully"
     }
 
@@ -574,7 +620,7 @@ async def handle_return(
     current_user = Depends(get_current_user_required),
     db: Session = Depends(get_db)
 ):
-    """Initiate or cancel return for a shipment"""
+    """Initiate return for a shipment"""
     shipment = db.query(Shipment).filter(
         Shipment.tracking_number == tracking_number.upper()
     ).first()
@@ -586,9 +632,15 @@ async def handle_return(
         db, str(shipment.id), str(current_user.id), intervention.reason
     )
     
-    email_sent = await email_service.send_return_notification(
-        shipment, reason=intervention.reason
-    )
+    email_sent = False
+    try:
+        logger.info(f"📧 Sending return initiation email for {tracking_number}")
+        email_sent = await email_service.send_return_notification(
+            shipment, reason=intervention.reason
+        )
+        logger.info(f"✅ Return initiation email sent: {email_sent}")
+    except Exception as e:
+        logger.error(f"❌ Failed to send return email: {e}", exc_info=True)
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to initiate return"))
@@ -599,7 +651,7 @@ async def handle_return(
         "action": "initiate",
         "new_state": result["return_initiated"],
         "timestamp": datetime.utcnow(),
-        "email_sent": True,
+        "email_sent": email_sent,
         "message": "Return initiated successfully"
     }
 
@@ -618,23 +670,35 @@ async def handle_delay(
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
     
+    email_sent = False
+    
     if intervention.action == "report":
         result = intervention_service.report_delay(
             db, str(shipment.id), str(current_user.id), 
             intervention.reason, 1  # estimated days
         )
-        email_sent = await email_service.send_delay_notification(
-            shipment, "report", 
-            reason=intervention.reason,
-            revised_eta=intervention.revised_eta.isoformat() if intervention.revised_eta else None
-        )
+        try:
+            logger.info(f"📧 Sending delay report email for {tracking_number}")
+            email_sent = await email_service.send_delay_notification(
+                shipment, "report", 
+                reason=intervention.reason,
+                revised_eta=intervention.revised_eta.isoformat() if intervention.revised_eta else None
+            )
+            logger.info(f"✅ Delay report email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send delay report email: {e}", exc_info=True)
     else:  # resolve
         result = intervention_service.resolve_delay(
             db, str(shipment.id), str(current_user.id)
         )
-        email_sent = await email_service.send_delay_notification(
-            shipment, "resolve"
-        )
+        try:
+            logger.info(f"📧 Sending delay resolve email for {tracking_number}")
+            email_sent = await email_service.send_delay_notification(
+                shipment, "resolve"
+            )
+            logger.info(f"✅ Delay resolve email sent: {email_sent}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send delay resolve email: {e}", exc_info=True)
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to process delay"))
@@ -645,7 +709,7 @@ async def handle_delay(
         "action": intervention.action,
         "new_state": result.get("delay_active", False),
         "timestamp": datetime.utcnow(),
-        "email_sent": True,
+        "email_sent": email_sent,
         "message": f"Delay {intervention.action}ed successfully"
     }
 
