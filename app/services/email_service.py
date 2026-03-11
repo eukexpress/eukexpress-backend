@@ -14,7 +14,7 @@ class EmailService:
     """Email service for EukExpress using Resend with verified domain onboarding@delivery.eukexpress.com"""
     
     def __init__(self):
-        # Use EUKEXPRESS_* variables for consistency
+        # Use EUKEXPRESS_* variables for consistency - YOUR PROVEN PATTERN
         self.api_key = settings.EUKEXPRESS_RESEND_API_KEY or settings.RESEND_API_KEY
         self.from_email = settings.EUKEXPRESS_FROM_EMAIL or settings.RESEND_FROM_EMAIL
         self.from_name = settings.EUKEXPRESS_FROM_NAME or settings.RESEND_FROM_NAME
@@ -22,28 +22,28 @@ class EmailService:
         # Configure Resend
         if self.api_key:
             resend.api_key = self.api_key
-            logger.info(f"✅ Email service initialized with from: {self.from_email}")
+            logger.info(f"✅ Email service initialized with from_email: {self.from_email}")
+            logger.info(f"✅ Email service initialized with from_name: {self.from_name}")
         else:
             logger.error("❌ No Resend API key found - email sending will fail")
     
     def _format_from_address(self) -> str:
-        """Ensure from address is properly formatted"""
-        if self.from_email and '<' in self.from_email and '>' in self.from_email:
-            # Already in correct format "Name <email@domain.com>"
+        """
+        Format from address using YOUR proven pattern that works:
+        "Name <email@domain.com>"
+        """
+        if not self.from_email:
+            logger.error("❌ from_email is empty - cannot format address")
+            return ""
+        
+        if not self.from_name:
+            logger.warning("⚠️ from_name is empty, using email only")
             return self.from_email
-        elif self.from_name and self.from_email:
-            # Format as "Name <email@domain.com>"
-            # Extract just the email part if it contains brackets
-            email_part = self.from_email
-            if '<' in email_part:
-                import re
-                match = re.search(r'<(.+?)>', email_part)
-                if match:
-                    email_part = match.group(1)
-            return f"{self.from_name} <{email_part}>"
-        else:
-            # Just email
-            return self.from_email
+        
+        # YOUR PROVEN PATTERN - This is what you've used for months successfully
+        formatted = f"{self.from_name} <{self.from_email}>"
+        logger.info(f"📧 Formatted from address: {formatted}")
+        return formatted
     
     async def send_email(
         self,
@@ -53,14 +53,18 @@ class EmailService:
         text_content: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Send an email using Resend - NOW ASYNC"""
+        """Send an email using Resend"""
         try:
             if not self.api_key:
                 logger.error("❌ Resend API key not configured")
                 return {"success": False, "error": "Resend API key not configured"}
             
-            # Properly format from address
+            # Format from address using YOUR proven pattern
             from_address = self._format_from_address()
+            
+            if not from_address:
+                logger.error("❌ Failed to format from_address")
+                return {"success": False, "error": "Invalid from address configuration"}
             
             # Prepare email params
             params = {
@@ -76,10 +80,10 @@ class EmailService:
             if attachments:
                 params["attachments"] = attachments
             
-            # Send email - run in thread pool to avoid blocking
+            # Send email
             logger.info(f"📧 Sending email from: {from_address} to: {to}, subject: {subject}")
             
-            # Run synchronous Resend call in thread pool
+            # Run in thread pool
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None, 
