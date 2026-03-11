@@ -1,3 +1,4 @@
+# EukExpress\backend\app\services\pdf_service.py
 """
 PDF Generation Service
 Generates professional invoice PDFs
@@ -76,7 +77,7 @@ async def generate_invoice_pdf(shipment):
         css = CSS(filename=css_path) if os.path.exists(css_path) else None
         
         # Generate PDF
-        HTML(string=html_content).write_pdf(pdf_path, stylesheets=[css] if css else [])
+        HTML(string=html_content, base_url=settings.APP_URL).write_pdf(pdf_path)
         
         # Update shipment with PDF path
         shipment.invoice_pdf_path = pdf_path

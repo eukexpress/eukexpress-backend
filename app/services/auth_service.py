@@ -14,7 +14,7 @@ import time
 from app.config import settings
 from app.models.admin import Admin
 
-# Configure logging - set to WARNING in production
+# Configure logging - set to WARNING in production to reduce noise
 if settings.APP_ENV == "production":
     logging.basicConfig(level=logging.WARNING)
 else:
@@ -116,7 +116,9 @@ def decode_token(token: str):
         return payload
         
     except jwt.ExpiredSignatureError:
-        logger.warning("Token has expired")
+        # Suppress logging for expired tokens in production to reduce noise
+        if settings.APP_ENV != "production":
+            logger.warning("Token has expired")
         return None
     except jwt.JWTError as e:
         logger.warning(f"Invalid token: {e}")
