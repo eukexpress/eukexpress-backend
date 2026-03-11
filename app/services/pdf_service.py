@@ -192,7 +192,7 @@ async def generate_invoice_pdf(shipment):
         contact_data = [
             [Paragraph("Contact US", styles['CustomRightAlign'])],
             [Paragraph(f"Address: {shipment.sender_address}", styles['CustomRightAlign'])],
-            [Paragraph(f"Email: {shipment.sender_email}", styles['CustomRightAlign'])],
+            [Paragraph("Email: delivery@eukexpress.com", styles['CustomRightAlign'])],  # CHANGED HERE
         ]
         contact_table = Table(contact_data, colWidths=[450])
         contact_table.setStyle(TableStyle([
