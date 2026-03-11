@@ -127,7 +127,7 @@ async def create_shipment(
         front_image_path=front_image_path,
         rear_image_path=rear_image_path,
         front_image_hash=front_image_hash,
-        rear_image_hash=rear_image_hash
+        rear_imageHash=rear_image_hash
     )
     
     db.add(new_shipment)
@@ -143,6 +143,9 @@ async def create_shipment(
             logger.info(f"✅ QR code generated for {tracking_number}")
     except Exception as e:
         logger.error(f"❌ QR code generation failed: {e}")
+    
+    # Initialize pdf_result variable
+    pdf_result = None
     
     # Generate invoice PDF
     try:
@@ -166,29 +169,30 @@ async def create_shipment(
     except Exception as e:
         logger.error(f"❌ PDF generation or email failed: {e}", exc_info=True)
     
-    # Send notification to recipient with QR code
+    # Send notification to recipient with PDF attached
     try:
-        logger.info(f"📧 Sending notification with QR to recipient: {new_shipment.recipient_email}")
-        # Use the QR version of the notification
-        notification_result = await email_service.send_shipment_created_notification_with_qr(new_shipment)
+        logger.info(f"📧 Sending notification with PDF to recipient: {new_shipment.recipient_email}")
+        
+        # Check if PDF was generated successfully
+        if pdf_result and pdf_result.get("success"):
+            notification_result = await email_service.send_shipment_created_notification(
+                new_shipment, 
+                pdf_result["path"]
+            )
+            logger.info(f"✅ Notification with PDF sent to recipient: {new_shipment.recipient_email}")
+        else:
+            # Fallback to without PDF
+            logger.warning(f"⚠️ PDF not available, sending notification without attachment")
+            notification_result = await email_service.send_shipment_created_notification(new_shipment)
+            
         if notification_result and notification_result.get("success"):
-            logger.info(f"✅ Notification email with QR sent to recipient: {notification_result.get('id')}")
+            logger.info(f"✅ Email sent successfully: {notification_result.get('id')}")
         else:
             error_msg = notification_result.get('error') if notification_result else "Unknown error"
-            logger.error(f"❌ Failed to send notification with QR: {error_msg}")
-            # Fallback to regular notification
-            logger.info(f"📧 Trying fallback notification without QR...")
-            fallback_result = await email_service.send_shipment_created_notification(new_shipment)
-            if fallback_result and fallback_result.get("success"):
-                logger.info(f"✅ Fallback notification sent to recipient: {fallback_result.get('id')}")
+            logger.error(f"❌ Failed to send email: {error_msg}")
+            
     except Exception as e:
         logger.error(f"❌ Notification email failed: {e}", exc_info=True)
-        # One more fallback attempt
-        try:
-            logger.info(f"📧 Final fallback attempt...")
-            await email_service.send_shipment_created_notification(new_shipment)
-        except:
-            logger.error(f"❌ All notification attempts failed")
     
     logger.info(f"📦 Shipment created: {tracking_number}")
     
