@@ -1,6 +1,6 @@
 """
 PDF Utilities
-Helper functions for PDF generation - NO HALF CODE
+Helper functions for PDF generation - COMPLETE FIXED VERSION
 """
 
 import os
@@ -85,7 +85,7 @@ def html_to_pdf(
     base_url: Optional[str] = None
 ) -> bool:
     """
-    Convert HTML to PDF with error handling
+    Convert HTML to PDF with error handling - FIXED for WeasyPrint compatibility
     
     Args:
         html_content: HTML string to convert
@@ -96,10 +96,14 @@ def html_to_pdf(
         True if successful, False otherwise
     """
     try:
+        # Create HTML object first - DON'T chain methods
         if base_url:
-            HTML(string=html_content, base_url=base_url).write_pdf(output_path)
+            html = HTML(string=html_content, base_url=base_url)
         else:
-            HTML(string=html_content).write_pdf(output_path)
+            html = HTML(string=html_content)
+        
+        # Then write PDF - THIS IS THE KEY FIX
+        html.write_pdf(output_path)
         
         logger.info(f"✅ PDF generated: {output_path}")
         return True
@@ -170,3 +174,24 @@ def get_pdf_path(invoice_dir: str, tracking_number: str) -> str:
     """
     filename = generate_pdf_filename(tracking_number)
     return os.path.join(invoice_dir, filename)
+
+def read_qr_code_file(qr_code_dir: str, tracking_number: str) -> Optional[bytes]:
+    """
+    Read QR code file as bytes for email attachment
+    
+    Args:
+        qr_code_dir: Directory containing QR codes
+        tracking_number: Shipment tracking number
+    
+    Returns:
+        QR code file content as bytes, or None if not found
+    """
+    qr_path = get_qr_code_path(qr_code_dir, tracking_number)
+    if qr_path and os.path.exists(qr_path):
+        try:
+            with open(qr_path, 'rb') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Failed to read QR code file: {e}")
+            return None
+    return None

@@ -1,12 +1,14 @@
 ﻿"""
 EukExpress Email Service
-Handles all email sending operations using Resend
+Handles all email sending operations using Resend - COMPLETE WITH QR CODE ATTACHMENT
 """
 import logging
 import resend
+import os
 from typing import List, Optional, Dict, Any
 import asyncio
 from app.config import settings
+from app.utils.pdf_utils import get_qr_code_path, read_qr_code_file
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +169,67 @@ class EmailService:
             return {"success": False, "error": str(e)}
     
     async def send_shipment_created_notification(self, shipment):
-        """Send notification to recipient about new shipment"""
+        """Send notification to recipient about new shipment with QR code attached"""
+        try:
+            # Get QR code content for attachment
+            qr_code_content = None
+            if hasattr(settings, 'QR_CODE_PATH'):
+                qr_path = get_qr_code_path(settings.QR_CODE_PATH, shipment.tracking_number)
+                if qr_path and os.path.exists(qr_path):
+                    with open(qr_path, 'rb') as f:
+                        qr_code_content = f.read()
+                    logger.info(f"✅ QR code found for attachment: {shipment.tracking_number}")
+                else:
+                    logger.warning(f"⚠️ QR code not found for {shipment.tracking_number}, sending without attachment")
+            
+            html_content = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
+                    <h1 style="color: white; margin: 0;">EukExpress Global Logistics</h1>
+                </div>
+                <div style="padding: 20px;">
+                    <h2 style="color: #1e293b;">A Shipment Has Been Created for You</h2>
+                    <p>Dear {shipment.recipient_name},</p>
+                    <p>A shipment has been created for you by {shipment.sender_name}.</p>
+                    
+                    <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #1e3c72; margin: 20px 0;">
+                        <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
+                        <p><strong>Origin:</strong> {shipment.origin_location}</p>
+                        <p><strong>Destination:</strong> {shipment.destination_location}</p>
+                        <p><strong>Estimated Delivery:</strong> {shipment.estimated_delivery_date}</p>
+                    </div>
+                    
+                    <p>Scan the QR code attached to this email to track your shipment, or click: 
+                    <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Track Online</a></p>
+                </div>
+                <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
+                    <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
+                </div>
+            </div>
+            """
+            
+            # Prepare attachments
+            attachments = []
+            if qr_code_content:
+                attachments.append({
+                    'filename': f"qr-{shipment.tracking_number}.png",
+                    'content': qr_code_content,
+                    'content_type': 'image/png'
+                })
+            
+            return await self.send_email(
+                to=[shipment.recipient_email],
+                subject=f"Shipment {shipment.tracking_number} Created for You",
+                html_content=html_content,
+                attachments=attachments if attachments else None
+            )
+        except Exception as e:
+            logger.error(f"Error sending shipment notification with QR: {e}", exc_info=True)
+            # Fallback to sending without QR
+            return await self._send_shipment_created_notification_fallback(shipment)
+    
+    async def _send_shipment_created_notification_fallback(self, shipment):
+        """Fallback method without QR code"""
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">

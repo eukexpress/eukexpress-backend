@@ -52,6 +52,16 @@ async def generate_invoice_pdf(shipment):
         # Format dimensions
         dimensions_display = format_dimensions(shipment.dimensions)
         
+        # Format currency values
+        declared_value_formatted = format_currency(
+            float(shipment.declared_value) if shipment.declared_value else 0, 
+            shipment.declared_currency
+        )
+        shipping_amount_formatted = format_currency(
+            float(shipment.shipping_amount), 
+            shipment.declared_currency
+        )
+        
         # Prepare data for template
         data = {
             "tracking": shipment.tracking_number,
@@ -76,7 +86,9 @@ async def generate_invoice_pdf(shipment):
             "dimensions": dimensions_display,
             "declared_value": float(shipment.declared_value) if shipment.declared_value else 0,
             "declared_currency": shipment.declared_currency,
+            "declared_value_formatted": declared_value_formatted,
             "shipping_amount": float(shipment.shipping_amount),
+            "shipping_amount_formatted": shipping_amount_formatted,
             "payment_method": shipment.payment_method or "N/A",
             "payment_status": shipment.payment_status,
             "sending_date": shipment.sending_date.strftime("%Y-%m-%d") if shipment.sending_date else "N/A",
@@ -90,7 +102,7 @@ async def generate_invoice_pdf(shipment):
         # Get PDF path
         pdf_path = get_pdf_path(invoice_dir, shipment.tracking_number)
         
-        # Generate PDF
+        # Generate PDF - USING FIXED FUNCTION
         success = html_to_pdf(html_content, pdf_path, settings.APP_URL)
         
         if not success:
