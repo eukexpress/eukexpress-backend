@@ -1,6 +1,6 @@
 ﻿"""
 EukExpress Email Service
-Handles all email sending operations using Resend - COMPLETE FIXED VERSION WITH PDF FOR BOTH
+Handles all email sending operations using Resend - COMPLETE FIXED VERSION WITH VISIBLE PDF ATTACHMENT
 """
 import logging
 import resend
@@ -96,6 +96,7 @@ class EmailService:
                         'content_type': attachment.get('content_type', 'application/octet-stream')
                     })
                 params["attachments"] = formatted_attachments
+                logger.info(f"📎 Email has {len(attachments)} attachment(s)")
             
             # Send email
             logger.info(f"📧 Sending email from: {from_address} to: {to}, subject: {subject}")
@@ -139,8 +140,11 @@ class EmailService:
             html_content=html_content
         )
     
-    async def send_invoice_pdf(self, shipment, pdf_path, recipient_email=None):
-        """Send invoice PDF as attachment"""
+    async def send_invoice_pdf(self, shipment, pdf_path):
+        """
+        Send invoice PDF as attachment to BOTH sender and recipient
+        The PDF file is ATTACHED to the email, not just a link
+        """
         try:
             with open(pdf_path, 'rb') as f:
                 pdf_content = f.read()
@@ -148,10 +152,8 @@ class EmailService:
             # Convert bytes to base64 for Resend
             pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
             
-            # Determine who to send to
-            to_emails = [shipment.sender_email]
-            if recipient_email:
-                to_emails.append(recipient_email)
+            # Send to BOTH sender and recipient
+            to_emails = [shipment.sender_email, shipment.recipient_email]
             
             html_content = f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -170,18 +172,25 @@ class EmailService:
                         <p><strong>Estimated Delivery:</strong> {shipment.estimated_delivery_date}</p>
                     </div>
                     
-                    <p>Please find attached the invoice PDF with QR code for tracking.</p>
-                    <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                    <div style="background-color: #e6f7e6; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #28a745;">
+                        <p style="margin: 0; font-size: 16px; color: #1e3c72;">
+                            <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email. 
+                            Please check your email client for the attached file.
+                        </p>
+                    </div>
+                    
+                    <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
                 </div>
                 <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                     <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
+                    <p>This email contains an attached PDF invoice. If you cannot see the attachment, please check your email client's download section.</p>
                 </div>
             </div>
             """
             
-            return await self.send_email(
+            result = await self.send_email(
                 to=to_emails,
-                subject=f"Shipment {shipment.tracking_number} - Invoice",
+                subject=f"📎 Shipment {shipment.tracking_number} - Invoice Attached",
                 html_content=html_content,
                 attachments=[{
                     'filename': f"invoice-{shipment.tracking_number}.pdf",
@@ -189,19 +198,25 @@ class EmailService:
                     'content_type': 'application/pdf'
                 }]
             )
+            
+            if result.get("success"):
+                logger.info(f"✅ Invoice PDF sent to both sender and recipient: {shipment.sender_email}, {shipment.recipient_email}")
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error sending invoice PDF: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def send_shipment_created_notification(self, shipment, pdf_path=None):
         """
-        Send notification to recipient about new shipment with PDF attached
-        Now includes PDF attachment for both sender and recipient
+        Send notification to recipient about new shipment with PDF ATTACHED
+        The PDF file is ATTACHED to the email, not just a link
         """
         try:
             # Prepare PDF attachment if available
             attachments = []
-            pdf_base64 = None
+            has_pdf = False
             
             if pdf_path and os.path.exists(pdf_path):
                 with open(pdf_path, 'rb') as f:
@@ -212,7 +227,22 @@ class EmailService:
                     'content': pdf_base64,
                     'content_type': 'application/pdf'
                 })
+                has_pdf = True
                 logger.info(f"✅ PDF attached to email: {pdf_path}")
+            else:
+                logger.warning(f"⚠️ PDF not found at {pdf_path}, sending without attachment")
+            
+            # Email HTML content - clearly indicates PDF is attached with visible notice
+            pdf_notice = ""
+            if has_pdf:
+                pdf_notice = """
+                <div style="background-color: #e6f7e6; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #28a745;">
+                    <p style="margin: 0; font-size: 16px; color: #1e3c72;">
+                        <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email. 
+                        Please check your email client for the attached file.
+                    </p>
+                </div>
+                """
             
             html_content = f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -231,23 +261,36 @@ class EmailService:
                         <p><strong>Estimated Delivery:</strong> {shipment.estimated_delivery_date}</p>
                     </div>
                     
-                    <p><strong>📎 Please find the invoice PDF attached to this email.</strong> The invoice contains a QR code for easy tracking.</p>
-                    <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                    {pdf_notice}
+                    
+                    <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
                 </div>
                 <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                     <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
+                    <p>This email contains an attached PDF invoice. If you cannot see the attachment, please check your email client's download section.</p>
                 </div>
             </div>
             """
             
-            return await self.send_email(
+            # Subject line includes paperclip emoji to indicate attachment
+            subject = f"📎 Shipment {shipment.tracking_number} Created for You - Invoice Attached" if has_pdf else f"Shipment {shipment.tracking_number} Created for You"
+            
+            result = await self.send_email(
                 to=[shipment.recipient_email],
-                subject=f"Shipment {shipment.tracking_number} Created for You - Invoice Attached",
+                subject=subject,
                 html_content=html_content,
                 attachments=attachments if attachments else None
             )
+            
+            if result.get("success"):
+                logger.info(f"✅ Email with PDF attachment sent to recipient: {shipment.recipient_email}")
+            else:
+                logger.error(f"❌ Failed to send email: {result.get('error')}")
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"Error sending shipment notification: {e}", exc_info=True)
+            logger.error(f"❌ Error sending shipment notification: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def send_status_update_notification(self, shipment, old_status, new_status, location=None, notes=None):
@@ -273,7 +316,7 @@ class EmailService:
                     {notes_html}
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -329,7 +372,7 @@ class EmailService:
                     {details}
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -380,7 +423,7 @@ class EmailService:
                     {details}
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -431,7 +474,7 @@ class EmailService:
                     {details}
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -482,7 +525,7 @@ class EmailService:
                     {details}
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -527,7 +570,7 @@ class EmailService:
                     {reason_html}
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -568,7 +611,7 @@ class EmailService:
                 <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #FF6B35; margin: 20px 0;">
                     {message}
                 </div>
-                {f'<p>Track your shipment: <a href="{tracking_link}">Click here</a></p>' if tracking_link else ''}
+                {f'<p>Track your shipment: <a href="{tracking_link}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>' if tracking_link else ''}
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
