@@ -1,242 +1,287 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>EukExpress Invoice</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EukExpress Shipment Receipt</title>
     <style>
-        body {
-            font-family: 'Inter', Arial, sans-serif;
+        * {
             margin: 0;
-            padding: 30px;
-            color: #1e293b;
+            padding: 0;
+            box-sizing: border-box;
         }
+        
+        body {
+            font-family: 'Arial', Helvetica, sans-serif;
+            background: #ffffff;
+            color: #000000;
+            line-height: 1.4;
+            padding: 30px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 25px;
+        }
+        
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 3px solid #1e3c72;
-            padding-bottom: 20px;
             margin-bottom: 30px;
+            border-bottom: 2px solid #003366;
+            padding-bottom: 15px;
         }
-        .logo {
+        
+        .logo h1 {
+            color: #003366;
             font-size: 28px;
             font-weight: 700;
-            color: #1e3c72;
         }
-        .invoice-title {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1e3c72;
+        
+        .logo span {
+            color: #FF6B35;
         }
-        .tracking-badge {
-            background: #1e3c72;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: 600;
+        
+        .contact-info {
+            text-align: right;
+            font-size: 12px;
+            color: #333;
         }
-        .grid {
+        
+        .contact-info p {
+            margin: 3px 0;
+        }
+        
+        .tracking-section {
+            background: #f5f5f5;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-left: 4px solid #003366;
+        }
+        
+        .tracking-id {
+            font-size: 24px;
+            font-weight: bold;
+            color: #003366;
+            margin-bottom: 5px;
+        }
+        
+        .date {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .parties-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 30px;
             margin-bottom: 30px;
         }
-        .section {
-            border: 1px solid #e2e8f0;
-            padding: 20px;
-            border-radius: 12px;
-            background: #f8fafc;
+        
+        .party-box {
+            background: #f9f9f9;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
         }
-        .section-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1e3c72;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 8px;
+        
+        .party-title {
+            font-weight: bold;
+            color: #003366;
+            margin-bottom: 12px;
+            font-size: 16px;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 5px;
         }
-        .row {
-            display: flex;
-            margin-bottom: 10px;
+        
+        .party-details p {
+            margin: 5px 0;
+            font-size: 13px;
         }
-        .label {
-            width: 140px;
-            color: #64748b;
+        
+        .party-details .name {
+            font-weight: bold;
             font-size: 14px;
         }
-        .value {
-            flex: 1;
-            font-weight: 500;
-            color: #1e293b;
+        
+        .destination-row {
+            margin-bottom: 25px;
+            font-weight: bold;
+            color: #003366;
+            font-size: 16px;
         }
-        .total {
-            background: linear-gradient(135deg, #1e3c72, #2a5298);
+        
+        .comments {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 12px;
+            margin-bottom: 25px;
+            font-weight: bold;
+        }
+        
+        .parcel-box {
+            border: 1px solid #003366;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .parcel-title {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #003366;
+        }
+        
+        .parcel-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .parcel-item {
+            font-size: 14px;
+        }
+        
+        .parcel-item strong {
+            color: #003366;
+        }
+        
+        .delivery-date {
+            background: #003366;
             color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 20px;
-            font-weight: 700;
+            padding: 12px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+        
+        .terms {
+            font-size: 11px;
+            color: #666;
+            line-height: 1.5;
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+        }
+        
+        .qr-section {
+            text-align: right;
             margin-top: 20px;
         }
-        .footer {
-            margin-top: 50px;
-            text-align: center;
-            color: #64748b;
-            font-size: 12px;
-            border-top: 1px solid #e2e8f0;
-            padding-top: 20px;
-        }
-        .qr-code {
-            text-align: right;
-        }
+        
         .qr-code img {
             width: 100px;
             height: 100px;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th {
-            background: #f1f5f9;
-            padding: 12px;
-            text-align: left;
-            font-size: 14px;
-        }
-        td {
-            padding: 12px;
-            border-bottom: 1px solid #e2e8f0;
+        
+        .amount-highlight {
+            font-size: 18px;
+            color: #003366;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">Euk<span style="color: #FF6B35;">Express</span></div>
-        <div class="invoice-title">INVOICE</div>
-    </div>
-    
-    <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
-        <div>
-            <div class="tracking-badge">{{ tracking }}</div>
-            <div style="margin-top: 10px;">Invoice #: {{ invoice_number }}</div>
-            <div>Date: {{ date }}</div>
-        </div>
-        <div class="qr-code">
-            <img src="{{ qr_code_path }}" alt="QR Code">
-        </div>
-    </div>
-    
-    <div class="grid">
-        <div class="section">
-            <div class="section-title">Sender Information</div>
-            <div class="row">
-                <span class="label">Name:</span>
-                <span class="value">{{ sender.name }}</span>
+    <div class="container">
+        <!-- Header with Contact Info -->
+        <div class="header">
+            <div class="logo">
+                <h1>Euk<span>Express</span></h1>
             </div>
-            <div class="row">
-                <span class="label">Email:</span>
-                <span class="value">{{ sender.email }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Phone:</span>
-                <span class="value">{{ sender.phone }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Address:</span>
-                <span class="value">{{ sender.address }}</span>
+            <div class="contact-info">
+                <p><strong>Contact US</strong></p>
+                <p>Address: {{ sender.address }}</p>
+                <p>Email: {{ sender.email }}</p>
             </div>
         </div>
-        
-        <div class="section">
-            <div class="section-title">Recipient Information</div>
-            <div class="row">
-                <span class="label">Name:</span>
-                <span class="value">{{ recipient.name }}</span>
+
+        <!-- Tracking Section -->
+        <div class="tracking-section">
+            <div class="tracking-id">Tracking ID: {{ tracking }}</div>
+            <div class="date">Date of shipment: {{ sending_date }}</div>
+        </div>
+
+        <!-- Sender and Receiver Grid -->
+        <div class="parties-grid">
+            <!-- Sender -->
+            <div class="party-box">
+                <div class="party-title">SENDER</div>
+                <div class="party-details">
+                    <p class="name">{{ sender.name }}</p>
+                    <p>{{ sender.address }}</p>
+                    <p>{{ sender.email }}</p>
+                    <p>{{ sender.phone }}</p>
+                </div>
             </div>
-            <div class="row">
-                <span class="label">Email:</span>
-                <span class="value">{{ recipient.email }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Phone:</span>
-                <span class="value">{{ recipient.phone }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Address:</span>
-                <span class="value">{{ recipient.address }}</span>
+
+            <!-- Receiver -->
+            <div class="party-box">
+                <div class="party-title">RECEIVER</div>
+                <div class="party-details">
+                    <p class="name">{{ recipient.name }}</p>
+                    <p>{{ recipient.address }}</p>
+                    <p>{{ recipient.email }}</p>
+                    <p>{{ recipient.phone }}</p>
+                    <p>{{ recipient.address }}</p>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <div class="grid">
-        <div class="section">
-            <div class="section-title">Shipment Details</div>
-            <div class="row">
-                <span class="label">Origin:</span>
-                <span class="value">{{ origin }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Destination:</span>
-                <span class="value">{{ destination }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Goods:</span>
-                <span class="value">{{ goods }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Weight:</span>
-                <span class="value">{{ weight }} kg</span>
-            </div>
-            <div class="row">
-                <span class="label">Dimensions:</span>
-                <span class="value">{{ dimensions }}</span>
+
+        <!-- Destination -->
+        <div class="destination-row">
+            Destination: {{ destination }}
+        </div>
+
+        <!-- Comments / Amount -->
+        <div class="comments">
+            Comments: {{ declared_currency }} {{ declared_value }}
+        </div>
+
+        <!-- Parcel Description -->
+        <div class="parcel-box">
+            <div class="parcel-title">PARCEL DESCRIPTION</div>
+            <div class="parcel-details">
+                <div class="parcel-item">
+                    <strong>Description:</strong> {{ goods }}
+                </div>
+                <div class="parcel-item">
+                    <strong>Weight:</strong> {{ weight }}
+                </div>
             </div>
         </div>
-        
-        <div class="section">
-            <div class="section-title">Dates</div>
-            <div class="row">
-                <span class="label">Sending Date:</span>
-                <span class="value">{{ sending_date }}</span>
-            </div>
-            <div class="row">
-                <span class="label">Est. Delivery:</span>
-                <span class="value">{{ estimated_delivery }}</span>
+
+        <!-- Expected Delivery Date -->
+        <div class="delivery-date">
+            EXPECTED DATE OF DELIVERY: {{ estimated_delivery }}
+        </div>
+
+        <!-- Terms and Conditions -->
+        <div class="terms">
+            Any shortage or damage must be notified within 72 hours of receipt of goods. Complaints can only be accepted if made in writing within 30 days of receipt of goods. No goods may be returned without prior authorization from EukExpress Global Logistics.
+        </div>
+
+        <!-- QR Code -->
+        <div class="qr-section">
+            <div class="qr-code">
+                <img src="{{ qr_code_path }}" alt="QR Code">
+                <p style="font-size: 10px; margin-top: 5px;">Scan to track</p>
             </div>
         </div>
-    </div>
-    
-    <div class="section">
-        <div class="section-title">Payment Summary</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th>Value</th>
-                    <th>Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Shipping Charges</td>
-                    <td>{{ declared_currency }} {{ declared_value }}</td>
-                    <td>{{ declared_currency }} {{ shipping_amount }}</td>
-                </tr>
-            </tbody>
-        </table>
-        
-        <div class="total">
-            Total Amount: {{ declared_currency }} {{ shipping_amount }}
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
         </div>
-        <div style="margin-top: 10px;">Payment Status: <strong>{{ payment_status }}</strong></div>
-        <div>Payment Method: {{ payment_method }}</div>
-    </div>
-    
-    <div class="footer">
-        <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
-        <p>Track your shipment at: https://eukexpress.com/track?number={{ tracking }}</p>
-        <p>© 2026 EukExpress. All rights reserved.</p>
     </div>
 </body>
 </html>

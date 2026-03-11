@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     APP_DEBUG: bool = False
     APP_URL: str = "https://eukexpress.onrender.com"
     
+    # IMPORTANT: Add FRONTEND_URL for QR codes and emails
+    FRONTEND_URL: str = "https://eukexpress.com"  # Your frontend domain
+    
     # Database - Optimized for Render free tier
     DATABASE_URL: str
     DATABASE_POOL_SIZE: int = 5
@@ -46,8 +49,8 @@ class Settings(BaseSettings):
     QR_CODE_PATH: str = "/opt/render/project/src/frontend/qr_codes"
     
     # Security - JWT Settings
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     JWT_ALGORITHM: str = "HS256"
     
     # Session Settings

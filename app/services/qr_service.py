@@ -1,26 +1,24 @@
-# Eukexpress\backend\app\services\qr_service.py
 """
 QR Code Generation Service
-Generates QR codes for tracking
+Generates QR codes for tracking with correct frontend URL
 """
 
 import qrcode
 import os
 import logging
 from PIL import Image
-
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 async def generate_qr_code(tracking_number: str) -> str:
-    """Generate QR code for tracking number"""
+    """Generate QR code for tracking number - points to FRONTEND tracking page"""
     try:
         # Create QR code directory if it doesn't exist
         os.makedirs(settings.QR_CODE_PATH, exist_ok=True)
         
-        # QR code content - tracking URL
-        tracking_url = f"{settings.APP_URL}/track?number={tracking_number}"
+        # Use FRONTEND_URL from settings
+        tracking_url = f"{settings.FRONTEND_URL}/track.html?number={tracking_number}"
         
         # Generate QR code
         qr = qrcode.QRCode(
@@ -40,11 +38,11 @@ async def generate_qr_code(tracking_number: str) -> str:
         qr_path = os.path.join(settings.QR_CODE_PATH, qr_filename)
         qr_image.save(qr_path)
         
-        logger.info(f"QR code generated for {tracking_number}")
+        logger.info(f"✅ QR code generated for {tracking_number} -> {tracking_url}")
         return qr_path
         
     except Exception as e:
-        logger.error(f"Failed to generate QR code for {tracking_number}: {e}")
+        logger.error(f"❌ Failed to generate QR code for {tracking_number}: {e}")
         return None
 
 async def generate_qr_code_with_logo(tracking_number: str, logo_path: str = None) -> str:
@@ -75,11 +73,11 @@ async def generate_qr_code_with_logo(tracking_number: str, logo_path: str = None
             qr_logo_path = os.path.join(settings.QR_CODE_PATH, f"{tracking_number}-logo.png")
             qr_image.save(qr_logo_path)
             
-            logger.info(f"QR code with logo generated for {tracking_number}")
+            logger.info(f"✅ QR code with logo generated for {tracking_number}")
             return qr_logo_path
         
         return qr_path
         
     except Exception as e:
-        logger.error(f"Failed to generate QR code with logo for {tracking_number}: {e}")
+        logger.error(f"❌ Failed to generate QR code with logo for {tracking_number}: {e}")
         return None
