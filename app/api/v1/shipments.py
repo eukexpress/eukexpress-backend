@@ -127,7 +127,7 @@ async def create_shipment(
         front_image_path=front_image_path,
         rear_image_path=rear_image_path,
         front_image_hash=front_image_hash,
-        rear_imageHash=rear_image_hash
+        rear_image_hash=rear_image_hash  # FIXED: was rear_imageHash
     )
     
     db.add(new_shipment)
