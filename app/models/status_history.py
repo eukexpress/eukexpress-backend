@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\models\status_history.py
 """
 Status History Model - Complete audit trail of all status changes
 """
@@ -23,7 +22,7 @@ class StatusHistory(Base):
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     
-    # Relationship - Fixed: added missing import and proper reference
+    # Relationship
     shipment = relationship("Shipment", back_populates="status_history")
     
     def __repr__(self):

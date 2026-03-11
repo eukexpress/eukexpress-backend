@@ -15,22 +15,25 @@ class Settings(BaseSettings):
     APP_DEBUG: bool = False
     APP_URL: str = "https://eukexpress.onrender.com"
     
-    # Database
+    # Database - Optimized for Render free tier
     DATABASE_URL: str
-    DATABASE_POOL_SIZE: int = 20
-    DATABASE_MAX_OVERFLOW: int = 40
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_TIMEOUT: int = 30
+    DATABASE_POOL_RECYCLE: int = 300
+    DATABASE_ECHO: bool = False
     
     # Admin
     ADMIN_USERNAME: str = "admin"
     ADMIN_EMAIL: str = "admin@eukexpress.com"
     ADMIN_PASSWORD: str
     
-    # Resend Email - Main configuration
+    # Resend Email
     RESEND_API_KEY: str
     RESEND_FROM_EMAIL: str = "onboarding@delivery.eukexpress.com"
     RESEND_FROM_NAME: str = "EukExpress Global Logistics"
     
-    # EukExpress Email - Unified configuration
+    # EukExpress Email
     EUKEXPRESS_RESEND_API_KEY: str
     EUKEXPRESS_FROM_EMAIL: str = "onboarding@delivery.eukexpress.com"
     EUKEXPRESS_FROM_NAME: str = "EukExpress Global Logistics"
@@ -42,9 +45,15 @@ class Settings(BaseSettings):
     UPLOAD_PATH: str = "/opt/render/project/src/frontend/uploads"
     QR_CODE_PATH: str = "/opt/render/project/src/frontend/qr_codes"
     
-    # Security
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Security - JWT Settings
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ALGORITHM: str = "HS256"
+    
+    # Session Settings
+    SESSION_EXPIRE_MINUTES: int = 60
+    
+    # CORS
     CORS_ORIGINS: str = "https://eukexpress.com,https://www.eukexpress.com,https://eukexpress.onrender.com,https://eukexpress-backend.onrender.com,http://localhost:8000,http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://127.0.0.1:3000,file://"
     
     # Rate Limiting
@@ -52,11 +61,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_PERIOD: int = 60
     
     # Logging
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "WARNING"
     LOG_FILE: str = "/opt/render/project/src/backend/logs/app.log"
     
     # Keep Alive
     RENDER_APP_URL: str = "https://eukexpress.onrender.com"
+    KEEP_ALIVE_INTERVAL: int = 10
+    KEEP_ALIVE_ENDPOINTS: str = "/,/health,/api/v1/public/status"
     
     class Config:
         env_file = ".env"
@@ -70,6 +81,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+    
+    @property
+    def keep_alive_endpoints_list(self) -> List[str]:
+        return [endpoint.strip() for endpoint in self.KEEP_ALIVE_ENDPOINTS.split(",")]
 
 settings = Settings()
 

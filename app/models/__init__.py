@@ -10,7 +10,7 @@ from app.models.intervention_log import InterventionLog
 from app.models.email_log import EmailLog
 from app.models.bulk_email_campaign import BulkEmailCampaign
 
-
+# Define all models that should be accessible when importing from app.models
 __all__ = [
     'Admin',
     'Shipment',
@@ -18,5 +18,4 @@ __all__ = [
     'InterventionLog',
     'EmailLog',
     'BulkEmailCampaign',
-    'HeritageEmailLog',  # Add this line
 ]

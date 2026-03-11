@@ -1,4 +1,3 @@
-# app\services\keep_alive.py
 """
 Keep-Alive Service for Render Free Tier
 Pings the application every 10 minutes to prevent sleeping
@@ -8,7 +7,8 @@ import asyncio
 import logging
 import httpx
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
+import time
 
 from app.config import settings
 
@@ -21,41 +21,112 @@ class KeepAliveService:
     """
     
     def __init__(self, app_url: Optional[str] = None):
-        self.app_url = app_url or settings.APP_URL
-        self.ping_interval = 600  # 10 minutes in seconds
+        self.app_url = app_url or settings.RENDER_APP_URL
+        self.endpoints = settings.keep_alive_endpoints_list
+        self.ping_interval = settings.KEEP_ALIVE_INTERVAL * 60  # Convert to seconds
         self.is_running = False
         self.ping_count = 0
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.successful_pings = 0
+        self.failed_pings = 0
+        self.client = None
     
-    async def ping_self(self):
-        """Ping the application to keep it alive"""
+    async def init_client(self):
+        """Initialize HTTP client"""
+        if not self.client:
+            self.client = httpx.AsyncClient(
+                timeout=30.0,
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            )
+    
+    async def ping_endpoint(self, endpoint: str) -> dict:
+        """Ping a single endpoint and return result"""
+        url = f"{self.app_url}{endpoint}"
+        start_time = time.time()
+        
         try:
-            # Ping the health endpoint
-            response = await self.client.get(f"{self.app_url}/health")
-            self.ping_count += 1
-            logger.info(f"Keep-alive ping #{self.ping_count} at {datetime.utcnow().isoformat()} - Status: {response.status_code}")
+            await self.init_client()
+            response = await self.client.get(url)
+            elapsed = time.time() - start_time
             
-            # Also ping a few other endpoints to ensure all modules are loaded
-            await self.client.get(f"{self.app_url}/api/v1/public/status")
-            
-            return True
+            if response.status_code == 200:
+                return {
+                    "success": True,
+                    "endpoint": endpoint,
+                    "status": response.status_code,
+                    "elapsed": round(elapsed, 3)
+                }
+            else:
+                return {
+                    "success": False,
+                    "endpoint": endpoint,
+                    "status": response.status_code,
+                    "elapsed": round(elapsed, 3)
+                }
+                
         except Exception as e:
-            logger.error(f"Keep-alive ping failed: {e}")
-            return False
+            elapsed = time.time() - start_time
+            return {
+                "success": False,
+                "endpoint": endpoint,
+                "error": str(e),
+                "elapsed": round(elapsed, 3)
+            }
+    
+    async def ping_all_endpoints(self) -> List[dict]:
+        """Ping all configured endpoints concurrently"""
+        tasks = [self.ping_endpoint(endpoint) for endpoint in self.endpoints]
+        results = await asyncio.gather(*tasks)
+        
+        self.ping_count += 1
+        
+        # Count successes and failures
+        for result in results:
+            if result.get("success"):
+                self.successful_pings += 1
+            else:
+                self.failed_pings += 1
+        
+        # Log summary
+        success_count = sum(1 for r in results if r.get("success"))
+        logger.info(
+            f"📊 Keep-alive ping #{self.ping_count} - "
+            f"Success: {success_count}/{len(results)} - "
+            f"Total: {self.successful_pings} ok, {self.failed_pings} failed"
+        )
+        
+        return results
     
     async def run(self):
         """Run the keep-alive service continuously"""
         self.is_running = True
-        logger.info(f"Keep-alive service started. Pinging every {self.ping_interval} seconds")
+        logger.info(
+            f"🚀 Keep-alive service started. "
+            f"Pinging {len(self.endpoints)} endpoints every {settings.KEEP_ALIVE_INTERVAL} minutes"
+        )
+        
+        # Do initial ping immediately
+        await self.ping_all_endpoints()
         
         while self.is_running:
-            await self.ping_self()
-            await asyncio.sleep(self.ping_interval)
+            # Wait for next interval
+            for _ in range(self.ping_interval):
+                if not self.is_running:
+                    break
+                await asyncio.sleep(1)
+            
+            if self.is_running:
+                await self.ping_all_endpoints()
     
-    def stop(self):
+    async def stop(self):
         """Stop the keep-alive service"""
         self.is_running = False
-        logger.info("Keep-alive service stopped")
+        if self.client:
+            await self.client.aclose()
+        logger.info(
+            f"🛑 Keep-alive service stopped. "
+            f"Total pings: {self.ping_count}, "
+            f"Success: {self.successful_pings}, Failed: {self.failed_pings}"
+        )
 
 # Global instance
 keep_alive_service = KeepAliveService()

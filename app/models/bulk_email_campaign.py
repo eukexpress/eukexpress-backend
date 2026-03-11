@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\models\bulk_email_campaign.py
 """
 Bulk Email Campaign Model
 Track mass email communications

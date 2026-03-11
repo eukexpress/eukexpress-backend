@@ -1,5 +1,3 @@
-# Eukexpress\backend\app\models\admin.py
-
 """
 Admin Model - Single admin authentication
 """

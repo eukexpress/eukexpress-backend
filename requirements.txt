@@ -37,6 +37,7 @@ qrcode[pil]==7.4.2
 # HTTP Client
 httpx==0.25.1
 requests==2.31.0
+aiohttp==3.9.1  # Added for keep-alive service
 
 # Utilities
 python-dotenv==1.0.0

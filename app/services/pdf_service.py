@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\services\pdf_service.py
 """
 PDF Generation Service
 Generates professional invoice PDFs
@@ -31,6 +30,10 @@ async def generate_invoice_pdf(shipment):
         template = template_env.get_template("invoice_template.html")
         
         # Prepare data for template
+        dimensions_display = "N/A"
+        if shipment.dimensions:
+            dimensions_display = f"{shipment.dimensions.get('length', '')}x{shipment.dimensions.get('width', '')}x{shipment.dimensions.get('height', '')} cm"
+        
         data = {
             "tracking": shipment.tracking_number,
             "invoice_number": shipment.invoice_number,
@@ -50,15 +53,15 @@ async def generate_invoice_pdf(shipment):
             "origin": shipment.origin_location,
             "destination": shipment.destination_location,
             "goods": shipment.goods_description,
-            "weight": float(shipment.weight_kg) if shipment.weight_kg else None,
-            "dimensions": shipment.dimensions,
-            "declared_value": float(shipment.declared_value) if shipment.declared_value else None,
+            "weight": float(shipment.weight_kg) if shipment.weight_kg else "N/A",
+            "dimensions": dimensions_display,
+            "declared_value": float(shipment.declared_value) if shipment.declared_value else 0,
             "declared_currency": shipment.declared_currency,
             "shipping_amount": float(shipment.shipping_amount),
-            "payment_currency": shipment.payment_currency,
+            "payment_method": shipment.payment_method or "N/A",
             "payment_status": shipment.payment_status,
-            "sending_date": shipment.sending_date.strftime("%Y-%m-%d"),
-            "estimated_delivery": shipment.estimated_delivery_date.strftime("%Y-%m-%d"),
+            "sending_date": shipment.sending_date.strftime("%Y-%m-%d") if shipment.sending_date else "N/A",
+            "estimated_delivery": shipment.estimated_delivery_date.strftime("%Y-%m-%d") if shipment.estimated_delivery_date else "N/A",
             "qr_code_path": os.path.join(settings.QR_CODE_PATH, f"{shipment.tracking_number}.png")
         }
         
@@ -68,7 +71,7 @@ async def generate_invoice_pdf(shipment):
         pdf_filename = f"invoice-{shipment.tracking_number}.pdf"
         pdf_path = os.path.join(invoice_dir, pdf_filename)
         
-        # Load CSS
+        # Load CSS if exists
         css_path = os.path.join("app/templates/pdf", "styles.css")
         css = CSS(filename=css_path) if os.path.exists(css_path) else None
         
@@ -79,8 +82,8 @@ async def generate_invoice_pdf(shipment):
         shipment.invoice_pdf_path = pdf_path
         
         logger.info(f"Invoice PDF generated for {shipment.tracking_number}")
-        return pdf_path
+        return {"success": True, "path": pdf_path}
         
     except Exception as e:
         logger.error(f"Failed to generate PDF for {shipment.tracking_number}: {e}")
-        return None
+        return {"success": False, "error": str(e)}

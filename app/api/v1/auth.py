@@ -1,30 +1,31 @@
-#app/api/v1/auth.py
 """
 Authentication Endpoints
-Admin login, logout, and password management
+Admin login, logout, and password management with session tracking
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import timedelta, datetime
 import logging
+import time
 
 from app.database import get_db
-from app.services import (
+from app.services.auth_service import (
     authenticate_admin,
     create_access_token,
     get_current_user,
     change_password,
-    update_last_login
+    update_last_login,
+    logout_user
 )
-from app.schemas.auth import Token, ChangePasswordRequest
+from app.schemas.auth import Token, ChangePasswordRequest, LoginResponse, TokenData
 from app.config import settings
 
 router = APIRouter(tags=["Authentication"])
 logger = logging.getLogger(__name__)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 @router.post("/login", response_model=Token)
 async def login(
@@ -33,10 +34,13 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """Login with username and password (form data)"""
+    start_time = time.time()
+    
     try:
         # Authenticate admin
         admin = authenticate_admin(db, form_data.username, form_data.password)
         if not admin:
+            logger.warning(f"Failed login attempt for: {form_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
@@ -47,18 +51,23 @@ async def login(
         client_ip = request.client.host if request.client else "unknown"
         update_last_login(db, admin.id, client_ip)
         
-        # Get token expiry
-        token_expiry_minutes = getattr(settings, 'JWT_ACCESS_TOKEN_EXPIRE_MINUTES', 
-                                       getattr(settings, 'ACCESS_TOKEN_EXPIRE_MINUTES', 30))
-        
         # Create access token
-        access_token_expires = timedelta(minutes=token_expiry_minutes)
+        access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": admin.username, "id": str(admin.id)},
             expires_delta=access_token_expires
         )
         
-        return {"access_token": access_token, "token_type": "bearer"}
+        elapsed = time.time() - start_time
+        logger.info(f"Login successful for {admin.username} in {elapsed:.3f}s")
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "admin_id": str(admin.id),
+            "admin_username": admin.username
+        }
         
     except HTTPException:
         raise
@@ -70,29 +79,55 @@ async def login(
         )
 
 @router.post("/logout")
-async def logout():
-    """Logout (client-side only - token just expires)"""
-    return {"message": "Successfully logged out"}
+async def logout(token: str = Depends(oauth2_scheme)):
+    """Logout - blacklist the current token"""
+    if token:
+        logout_user(token)
+    return {"message": "Successfully logged out", "success": True}
 
 @router.get("/verify")
 async def verify_token(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
-    """Verify if token is valid"""
+    """Verify if token is valid and get session info"""
+    start_time = time.time()
+    
     try:
         admin = get_current_user(token, db)
         if not admin:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Invalid or expired token"
             )
+        
+        # Get token expiry info
+        from jose import jwt
+        clean_token = token.replace('Bearer ', '') if token.startswith('Bearer ') else token
+        payload = jwt.decode(
+            clean_token,
+            settings.APP_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_exp": False}
+        )
+        
+        exp_timestamp = payload.get("exp", 0)
+        exp_datetime = datetime.fromtimestamp(exp_timestamp)
+        now = datetime.utcnow()
+        expires_in = max(0, int((exp_datetime - now).total_seconds()))
+        
+        elapsed = time.time() - start_time
         
         return {
             "valid": True,
             "username": admin.username,
-            "id": str(admin.id)
+            "id": str(admin.id),
+            "expires_in": expires_in,
+            "verified_in": f"{elapsed:.3f}s"
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Token verification error: {str(e)}")
         raise HTTPException(
@@ -128,7 +163,10 @@ async def change_admin_password(
                 detail="Current password is incorrect"
             )
         
-        return {"message": "Password changed successfully"}
+        # Force logout after password change
+        logout_user(token)
+        
+        return {"message": "Password changed successfully", "success": True}
         
     except HTTPException:
         raise

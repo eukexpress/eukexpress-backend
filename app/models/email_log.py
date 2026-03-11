@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\models\email_log.py
 """
 Email Log Model - Track all email communications
 """
@@ -24,7 +23,7 @@ class EmailLog(Base):
     status = Column(String(20), default='SENT')  # 'SENT', 'FAILED', 'OPENED'
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     
-    # Relationship - Fixed: added missing import
+    # Relationship
     shipment = relationship("Shipment", back_populates="email_logs")
     
     def __repr__(self):

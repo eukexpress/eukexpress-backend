@@ -27,29 +27,44 @@ from app.api.v1 import (
     interventions_router
 )
 from app.config import settings
-from app.database import engine, Base
+from app.database import engine, Base, check_database_connection
+from app.services.keep_alive import keep_alive_service, start_keep_alive
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("\n" + "═"*50)
+    print("\n" + "═"*60)
     print("🚀 EUKEXPRESS API STARTING")
-    print("═"*50)
+    print("═"*60)
     
     # Quick DB check
     try:
         Base.metadata.create_all(bind=engine)
-        print("✅ Database connected")
+        db_status = check_database_connection()
+        if db_status:
+            print("✅ Database connected")
+        else:
+            print("⚠️ Database connection issue")
     except Exception as e:
         print(f"❌ Database error: {e}")
     
-    print("═"*50 + "\n")
+    # Start keep-alive service (only in production)
+    if settings.APP_ENV == "production":
+        await start_keep_alive()
+        print(f"✅ Keep-alive service started (every {settings.KEEP_ALIVE_INTERVAL} minutes)")
+    
+    print("═"*60 + "\n")
     yield
     
     # Shutdown
-    print("\n" + "═"*50)
+    print("\n" + "═"*60)
     print("👋 EUKEXPRESS API SHUTDOWN")
-    print("═"*50 + "\n")
+    print("═"*60)
+    
+    if settings.APP_ENV == "production":
+        await keep_alive_service.stop()
+    
+    print("✅ Cleanup complete\n")
 
 # Create FastAPI app
 app = FastAPI(
@@ -63,9 +78,8 @@ app = FastAPI(
 )
 
 # ============================================
-# CORS CONFIGURATION - FIXED FOR FRONTEND
+# CORS CONFIGURATION
 # ============================================
-# Define all allowed origins explicitly
 ALLOWED_ORIGINS = [
     "http://localhost:5500",
     "http://127.0.0.1:5500",
@@ -77,11 +91,9 @@ ALLOWED_ORIGINS = [
     "https://www.eukexpress.com",
 ]
 
-# Add origins from settings if they exist
 if hasattr(settings, 'cors_origins_list') and settings.cors_origins_list:
     ALLOWED_ORIGINS.extend(settings.cors_origins_list)
 
-# Remove duplicates
 ALLOWED_ORIGINS = list(set(ALLOWED_ORIGINS))
 
 app.add_middleware(
@@ -92,13 +104,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-
-# Log CORS configuration
-print("\n" + "═"*50)
-print("🔧 CORS Configuration:")
-for origin in ALLOWED_ORIGINS:
-    print(f"   • {origin}")
-print("═"*50 + "\n")
 
 # Routes
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
@@ -127,18 +132,37 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "environment": settings.APP_ENV,
-        "docs": "/docs"
+        "docs": "/docs",
+        "keep_alive": f"Active (every {settings.KEEP_ALIVE_INTERVAL} minutes)" if settings.APP_ENV == "production" else "Disabled"
     }
 
 @app.get("/health")
 async def health():
+    db_status = check_database_connection()
     return {
-        "status": "ok",
+        "status": "ok" if db_status else "degraded",
         "time": datetime.utcnow().isoformat(),
-        "database": "connected"
+        "database": "connected" if db_status else "disconnected",
+        "environment": settings.APP_ENV
+    }
+
+@app.get("/api/v1/public/status")
+async def public_status():
+    """Public endpoint for keep-alive pings"""
+    return {
+        "status": "operational",
+        "service": "EukExpress API",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+        log_level="warning",
+        access_log=False
+    )

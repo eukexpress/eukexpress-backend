@@ -1,6 +1,6 @@
 ﻿"""
 Authentication Service
-Handles JWT token creation, validation, and password management
+Handles JWT token creation, validation, session management and password management
 """
 
 from jose import JWTError, jwt
@@ -9,16 +9,25 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 import logging
 import traceback
+import time
 
 from app.config import settings
 from app.models.admin import Admin
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging - set to WARNING in production
+if settings.APP_ENV == "production":
+    logging.basicConfig(level=logging.WARNING)
+else:
+    logging.basicConfig(level=logging.DEBUG)
+    
 logger = logging.getLogger(__name__)
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Simple in-memory token blacklist and session store
+token_blacklist = set()
+session_store = {}  # user_id -> last_activity timestamp
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password"""
@@ -30,174 +39,151 @@ def get_password_hash(password: str) -> str:
 
 def authenticate_admin(db: Session, username: str, password: str):
     """Authenticate admin by username and password"""
-    logger.debug(f"🔐 Authenticating admin: {username}")
+    start_time = time.time()
+    
     admin = db.query(Admin).filter(Admin.username == username).first()
     if not admin:
-        logger.debug(f"🔐 Admin not found: {username}")
+        logger.warning(f"Authentication failed: user not found - {username}")
         return None
+    
     if not verify_password(password, admin.password_hash):
-        logger.debug(f"🔐 Invalid password for: {username}")
+        logger.warning(f"Authentication failed: invalid password - {username}")
         return None
-    logger.debug(f"🔐 Authentication successful: {username}")
+    
+    # Update session activity
+    session_store[str(admin.id)] = datetime.utcnow().timestamp()
+    
+    elapsed = time.time() - start_time
+    logger.info(f"Authentication successful for {username} in {elapsed:.3f}s")
+    
     return admin
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
-    """Create JWT access token"""
+    """Create JWT access token with session expiry"""
     to_encode = data.copy()
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.APP_SECRET_KEY, algorithm="HS256")
-    logger.debug(f"🔑 Created token for user: {data.get('sub')}")
+    # Add issued at and session ID
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "session_id": str(time.time())  # Unique session identifier
+    })
+    
+    encoded_jwt = jwt.encode(to_encode, settings.APP_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
 def decode_token(token: str):
     """Decode and validate JWT token"""
-    logger.debug("="*60)
-    logger.debug("🔑 DECODE TOKEN - START")
-    logger.debug(f"🔑 Input token length: {len(token) if token else 0}")
-    logger.debug(f"🔑 Token preview: {token[:50] if token and len(token) > 50 else token}...")
-    
     if not token:
-        logger.error("🔑 No token provided to decode")
         return None
     
     try:
-        # Check if token has Bearer prefix
+        # Clean token if it has Bearer prefix
         if token.startswith('Bearer '):
-            logger.debug("🔑 Token has 'Bearer ' prefix - cleaning...")
             token = token[7:]
-            logger.debug(f"🔑 Cleaned token: {token[:50]}...")
         
-        # Validate token format
-        if token.count('.') != 2:
-            logger.error(f"🔑 Invalid JWT format - has {token.count('.')} dots, expected 2")
+        # Check if token is blacklisted
+        if token in token_blacklist:
+            logger.warning("Token is blacklisted")
             return None
         
-        # Log secret key being used (first few chars only)
-        logger.debug(f"🔑 Using secret key: {settings.APP_SECRET_KEY[:10]}...")
-        
         # Decode the token
-        payload = jwt.decode(token, settings.APP_SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token, 
+            settings.APP_SECRET_KEY, 
+            algorithms=[settings.JWT_ALGORITHM]
+        )
         
-        logger.debug(f"🔑 Token decoded successfully!")
-        logger.debug(f"🔑 Payload: {payload}")
-        logger.debug(f"🔑 Expiration: {datetime.fromtimestamp(payload.get('exp', 0))}")
-        
-        # Check expiration
-        exp = payload.get('exp')
-        if exp:
-            exp_time = datetime.fromtimestamp(exp)
-            now = datetime.utcnow()
-            if exp_time < now:
-                logger.error(f"🔑 Token expired at {exp_time}, now is {now}")
+        # Check session activity
+        user_id = payload.get("id")
+        if user_id and user_id in session_store:
+            last_activity = session_store[user_id]
+            now = datetime.utcnow().timestamp()
+            
+            # Check if session expired due to inactivity
+            if now - last_activity > settings.SESSION_EXPIRE_MINUTES * 60:
+                logger.warning(f"Session expired for user {user_id} due to inactivity")
                 return None
-            logger.debug(f"🔑 Token valid until: {exp_time}")
+            
+            # Update last activity
+            session_store[user_id] = now
         
         return payload
         
     except jwt.ExpiredSignatureError:
-        logger.error("🔑 Token expired signature error")
+        logger.warning("Token has expired")
         return None
-    except jwt.InvalidTokenError as e:
-        logger.error(f"🔑 Invalid token error: {str(e)}")
+    except jwt.JWTError as e:
+        logger.warning(f"Invalid token: {e}")
         return None
     except Exception as e:
-        logger.error(f"🔑 Unexpected decode error: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Unexpected decode error: {e}")
         return None
 
 def get_current_user(token: str, db: Session):
     """Get current user from token"""
-    logger.debug("="*60)
-    logger.debug("🔐 GET CURRENT USER CALLED")
-    logger.debug(f"🔐 Token received - Length: {len(token) if token else 0}")
-    logger.debug(f"🔐 Token preview: {token[:50] if token and len(token) > 50 else token}...")
-    
     if not token:
-        logger.error("🔐 No token provided")
         return None
     
-    try:
-        # Log token format
-        if token.startswith('Bearer '):
-            logger.warning("🔐 Token has 'Bearer ' prefix - cleaning...")
-            token = token[7:]
-            logger.debug(f"🔐 Cleaned token: {token[:50]}...")
-        
-        # Check if token looks like a JWT (has dots)
-        if token.count('.') == 2:
-            logger.debug("🔐 Token format: Valid JWT (3 parts)")
-        else:
-            logger.warning(f"🔐 Token format: Invalid JWT - has {token.count('.')} dots")
-        
-        # Decode token
-        logger.debug("🔐 Attempting to decode token...")
-        payload = decode_token(token)
-        
-        if not payload:
-            logger.error("🔐 Failed to decode token")
-            return None
-        
-        # Extract username
-        username = payload.get("sub")
-        if not username:
-            logger.error("🔐 No username (sub) in token payload")
-            logger.error(f"🔐 Available payload keys: {list(payload.keys())}")
-            return None
-        
-        logger.debug(f"🔐 Looking up user: '{username}'")
-        
-        # Query database
-        admin = db.query(Admin).filter(Admin.username == username).first()
-        
-        if not admin:
-            logger.error(f"🔐 User '{username}' not found in database")
-            # Log available users for debugging
-            all_admins = db.query(Admin.username, Admin.id).all()
-            logger.debug(f"🔐 Available users in DB: {[{'username': a[0], 'id': str(a[1])} for a in all_admins]}")
-            return None
-        
-        logger.debug(f"🔐 ✅ SUCCESS! User found: {admin.username} (ID: {admin.id})")
-        logger.debug(f"🔐 User details - Created: {admin.created_at}, Last login: {admin.last_login}")
-        
-        return admin
-        
-    except Exception as e:
-        logger.error(f"🔐 Unexpected error in get_current_user: {str(e)}")
-        logger.error(traceback.format_exc())
+    payload = decode_token(token)
+    if not payload:
         return None
+    
+    username = payload.get("sub")
+    if not username:
+        return None
+    
+    admin = db.query(Admin).filter(Admin.username == username).first()
+    return admin
 
 def update_last_login(db: Session, admin_id: str, ip_address: str):
     """Update admin's last login timestamp and IP"""
-    logger.debug(f"📝 Updating last login for admin ID: {admin_id}, IP: {ip_address}")
     admin = db.query(Admin).filter(Admin.id == admin_id).first()
     if admin:
         admin.last_login = datetime.utcnow()
         admin.last_login_ip = ip_address
         db.commit()
-        logger.debug(f"📝 Last login updated for: {admin.username}")
-    else:
-        logger.error(f"📝 Admin not found with ID: {admin_id}")
+        
+        # Update session activity
+        session_store[admin_id] = datetime.utcnow().timestamp()
 
 def change_password(db: Session, admin_id: str, current_password: str, new_password: str) -> bool:
     """Change admin password"""
-    logger.debug(f"🔐 Password change requested for admin ID: {admin_id}")
     admin = db.query(Admin).filter(Admin.id == admin_id).first()
     if not admin:
-        logger.error(f"🔐 Admin not found with ID: {admin_id}")
         return False
     
     if not verify_password(current_password, admin.password_hash):
-        logger.error("🔐 Current password is incorrect")
         return False
     
     admin.password_hash = get_password_hash(new_password)
     admin.updated_at = datetime.utcnow()
     db.commit()
     
-    logger.debug(f"🔐 Password changed successfully for: {admin.username}")
     return True
+
+def logout_user(token: str):
+    """Logout user by blacklisting their token"""
+    if token:
+        if token.startswith('Bearer '):
+            token = token[7:]
+        token_blacklist.add(token)
+        logger.info(f"User logged out, token blacklisted")
+
+def cleanup_expired_sessions():
+    """Clean up expired sessions (call periodically)"""
+    now = datetime.utcnow().timestamp()
+    expired_users = []
+    
+    for user_id, last_activity in session_store.items():
+        if now - last_activity > settings.SESSION_EXPIRE_MINUTES * 60 * 24:  # 24 hours
+            expired_users.append(user_id)
+    
+    for user_id in expired_users:
+        del session_store[user_id]
+        logger.debug(f"Cleaned up expired session for user {user_id}")

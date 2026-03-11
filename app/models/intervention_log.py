@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\models\intervention_log.py
 """
 Intervention Log Model - Detailed tracking of all toggle actions
 """
@@ -23,7 +22,7 @@ class InterventionLog(Base):
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
-    # Relationship - Fixed: added missing import
+    # Relationship
     shipment = relationship("Shipment", back_populates="intervention_logs")
     
     def __repr__(self):

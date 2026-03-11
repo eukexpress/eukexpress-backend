@@ -8,6 +8,9 @@ from datetime import datetime
 class Token(BaseModel):
     access_token: str
     token_type: str
+    expires_in: Optional[int] = None
+    admin_id: Optional[str] = None
+    admin_username: Optional[str] = None
 
 class TokenData(BaseModel):
     username: Optional[str] = None
@@ -16,6 +19,13 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+    admin_id: str
+    admin_username: str
 
 class ChangePasswordRequest(BaseModel):
     current_password: str

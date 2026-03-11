@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\schemas\email.py
 """
 Email Communication Schemas
 Request and response models for email operations
@@ -43,3 +42,13 @@ class CampaignResponse(BaseModel):
     campaign_id: str
     recipient_count: int
     estimated_completion: datetime
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "campaign_id": "camp_123456",
+                "recipient_count": 150,
+                "estimated_completion": "2026-03-11T14:30:00Z"
+            }
+        }

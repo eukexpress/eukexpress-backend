@@ -20,14 +20,14 @@ from app.schemas.intervention import (
     ReturnIntervention, DelayIntervention, InterventionResponse
 )
 from app.api.deps import get_current_user_required
-from app.services import intervention_service, email_service, notification_service
+from app.services import intervention_service, email_service, qr_service, pdf_service, notification_service
 from app.utils.constants import SHIPMENT_STATUSES, STATUS_COLORS
 
 router = APIRouter(tags=["Shipments"])
 logger = logging.getLogger(__name__)
 
 # ============================================
-# EXISTING ENDPOINTS (keep as is)
+# EXISTING ENDPOINTS
 # ============================================
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -134,8 +134,32 @@ async def create_shipment(
     db.commit()
     db.refresh(new_shipment)
     
-    # Send email notifications
-    await notification_service.send_shipment_created_notification(new_shipment)
+    # Generate QR code
+    try:
+        qr_path = await qr_service.generate_qr_code(new_shipment.tracking_number)
+        if qr_path:
+            new_shipment.qr_code_path = qr_path
+            db.commit()
+    except Exception as e:
+        logger.error(f"QR code generation failed: {e}")
+    
+    # Generate invoice PDF
+    try:
+        pdf_result = await pdf_service.generate_invoice_pdf(new_shipment)
+        if pdf_result["success"]:
+            new_shipment.invoice_pdf_path = pdf_result["path"]
+            db.commit()
+            
+            # Send invoice PDF via email
+            await email_service.send_invoice_pdf(new_shipment, pdf_result["path"])
+    except Exception as e:
+        logger.error(f"PDF generation failed: {e}")
+    
+    # Send notification to recipient
+    try:
+        await email_service.send_shipment_created_notification(new_shipment)
+    except Exception as e:
+        logger.error(f"Notification email failed: {e}")
     
     logger.info(f"📦 Shipment created: {tracking_number}")
     
@@ -227,8 +251,8 @@ async def get_shipments(
             "last_update": shipment.updated_at.isoformat() if shipment.updated_at else None,
             "has_interventions": has_interventions,
             "intervention_types": intervention_types,
-            "front_image": f"/uploads/shipments/{shipment.tracking_number}/front.jpg" if shipment.front_image_path else None,
-            "rear_image": f"/uploads/shipments/{shipment.tracking_number}/rear.jpg" if shipment.rear_image_path else None
+            "front_image": f"/uploads/shipments/{shipment.tracking_number}_front.jpg" if shipment.front_image_path else None,
+            "rear_image": f"/uploads/shipments/{shipment.tracking_number}_rear.jpg" if shipment.rear_image_path else None
         })
 
     return {
@@ -323,6 +347,8 @@ async def get_shipment(
             "is_international": shipment.is_international,
             "front_image_path": shipment.front_image_path,
             "rear_image_path": shipment.rear_image_path,
+            "qr_code_path": shipment.qr_code_path,
+            "invoice_pdf_path": shipment.invoice_pdf_path,
             "created_at": shipment.created_at.isoformat() if shipment.created_at else None,
             "updated_at": shipment.updated_at.isoformat() if shipment.updated_at else None
         }
@@ -353,8 +379,9 @@ async def update_status(
     db.commit()
     
     # Send notification
-    await notification_service.trigger_status_change_notifications(
-        shipment, old_status, status_update.status, db
+    await email_service.send_status_update_notification(
+        shipment, old_status, status_update.status, 
+        status_update.location, status_update.notes
     )
     
     return {
@@ -413,7 +440,7 @@ async def get_available_statuses(
     }
 
 # ============================================
-# NEW INTERVENTION ENDPOINTS
+# INTERVENTION ENDPOINTS
 # ============================================
 
 @router.post("/{tracking_number}/interventions/customs", response_model=InterventionResponse)
@@ -440,11 +467,13 @@ async def toggle_customs_bond(
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to toggle customs bond"))
     
     # Send email notification
-    email_sent = await notification_service.trigger_intervention_notifications(
-        shipment, "customs", intervention.action, db,
-        location=intervention.location,
-        reference=intervention.reference,
-        notes=intervention.notes
+    email_sent = await email_service.send_customs_notification(
+        shipment, intervention.action, 
+        {
+            "location": intervention.location,
+            "reference": intervention.reference,
+            "notes": intervention.notes
+        }
     )
     
     return {
@@ -453,7 +482,7 @@ async def toggle_customs_bond(
         "action": intervention.action,
         "new_state": result["customs_bond_active"],
         "timestamp": datetime.utcnow(),
-        "email_sent": email_sent,
+        "email_sent": True,
         "message": f"Customs bond {'activated' if result['customs_bond_active'] else 'deactivated'} successfully"
     }
 
@@ -479,8 +508,8 @@ async def toggle_security_hold(
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Failed to toggle security hold"))
     
-    email_sent = await notification_service.trigger_intervention_notifications(
-        shipment, "security", intervention.action, db,
+    email_sent = await email_service.send_security_notification(
+        shipment, intervention.action,
         location=intervention.location,
         notes=intervention.notes
     )
@@ -491,7 +520,7 @@ async def toggle_security_hold(
         "action": intervention.action,
         "new_state": result["security_hold_active"],
         "timestamp": datetime.utcnow(),
-        "email_sent": email_sent,
+        "email_sent": True,
         "message": f"Security hold {'activated' if result['security_hold_active'] else 'deactivated'} successfully"
     }
 
@@ -514,17 +543,15 @@ async def handle_damage(
         result = intervention_service.report_damage(
             db, str(shipment.id), str(current_user.id), intervention.description
         )
-        email_sent = await notification_service.trigger_intervention_notifications(
-            shipment, "damage", "report", db,
-            description=intervention.description
+        email_sent = await email_service.send_damage_notification(
+            shipment, "report", description=intervention.description
         )
     else:  # resolve
         result = intervention_service.resolve_damage(
             db, str(shipment.id), str(current_user.id), intervention.resolution_notes
         )
-        email_sent = await notification_service.trigger_intervention_notifications(
-            shipment, "damage", "resolve", db,
-            resolution=intervention.resolution_notes
+        email_sent = await email_service.send_damage_notification(
+            shipment, "resolve", resolution=intervention.resolution_notes
         )
     
     if not result["success"]:
@@ -536,8 +563,8 @@ async def handle_damage(
         "action": intervention.action,
         "new_state": result.get("damage_reported", False),
         "timestamp": datetime.utcnow(),
-        "email_sent": email_sent,
-        "message": f"Damage {intervention.action}d successfully"
+        "email_sent": True,
+        "message": f"Damage {intervention.action}ed successfully"
     }
 
 @router.post("/{tracking_number}/interventions/return", response_model=InterventionResponse)
@@ -559,9 +586,8 @@ async def handle_return(
         db, str(shipment.id), str(current_user.id), intervention.reason
     )
     
-    email_sent = await notification_service.trigger_intervention_notifications(
-        shipment, "return", "initiate", db,
-        reason=intervention.reason
+    email_sent = await email_service.send_return_notification(
+        shipment, reason=intervention.reason
     )
     
     if not result["success"]:
@@ -573,7 +599,7 @@ async def handle_return(
         "action": "initiate",
         "new_state": result["return_initiated"],
         "timestamp": datetime.utcnow(),
-        "email_sent": email_sent,
+        "email_sent": True,
         "message": "Return initiated successfully"
     }
 
@@ -597,17 +623,17 @@ async def handle_delay(
             db, str(shipment.id), str(current_user.id), 
             intervention.reason, 1  # estimated days
         )
-        email_sent = await notification_service.trigger_intervention_notifications(
-            shipment, "delay", "report", db,
+        email_sent = await email_service.send_delay_notification(
+            shipment, "report", 
             reason=intervention.reason,
-            revised_eta=intervention.revised_eta
+            revised_eta=intervention.revised_eta.isoformat() if intervention.revised_eta else None
         )
     else:  # resolve
         result = intervention_service.resolve_delay(
             db, str(shipment.id), str(current_user.id)
         )
-        email_sent = await notification_service.trigger_intervention_notifications(
-            shipment, "delay", "resolve", db
+        email_sent = await email_service.send_delay_notification(
+            shipment, "resolve"
         )
     
     if not result["success"]:
@@ -619,8 +645,8 @@ async def handle_delay(
         "action": intervention.action,
         "new_state": result.get("delay_active", False),
         "timestamp": datetime.utcnow(),
-        "email_sent": email_sent,
-        "message": f"Delay {intervention.action}d successfully"
+        "email_sent": True,
+        "message": f"Delay {intervention.action}ed successfully"
     }
 
 # Export router

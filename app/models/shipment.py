@@ -1,7 +1,5 @@
-# Eukexpress\backend\app\models\shipment.py
 """
 Shipment Model - Core shipment records with all tracking data
-Complete implementation of the shipment table from the blueprint
 """
 
 from sqlalchemy import Column, String, Boolean, DateTime, Text, DECIMAL, JSON, Date, ForeignKey, Integer

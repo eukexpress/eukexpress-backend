@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#start.py
 """
 EukExpress Production Startup Script
 Run with: python start.py
