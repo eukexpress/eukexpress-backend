@@ -1,0 +1,41 @@
+﻿========================================
+RENDER ENVIRONMENT VARIABLES TO UPDATE
+========================================
+
+Copy and paste these values into your Render dashboard:
+
+1. Go to: https://dashboard.render.com
+2. Select your backend service
+3. Click "Environment" tab
+4. Update or add these variables:
+
+----------------------------------------------------------------
+VARIABLE NAME              | VALUE
+----------------------------------------------------------------
+EUKEXPRESS_FROM_EMAIL      | "EukExpress Global Logistics <onboarding@delivery.eukexpress.com>"
+RESEND_FROM_EMAIL          | "EukExpress Global Logistics <onboarding@delivery.eukexpress.com>"
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES | 1440
+JWT_REFRESH_TOKEN_EXPIRE_DAYS   | 30
+LOG_LEVEL                  | WARNING
+----------------------------------------------------------------
+
+Make sure to include the quotes in the email values!
+
+After updating, Render will automatically redeploy.
+
+========================================
+VERIFICATION STEPS AFTER DEPLOYMENT
+========================================
+
+1. Check logs for errors:
+   - No "Invalid rom field" errors
+   - No PDF generation errors
+
+2. Test creating a shipment:
+   - Email should be sent to sender with PDF
+   - Email should be sent to recipient
+
+3. Test intervention toggles:
+   - Emails should be sent for each toggle
+
+========================================

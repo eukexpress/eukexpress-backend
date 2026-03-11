@@ -28,19 +28,12 @@ class EmailService:
     
     def _format_from_address(self) -> str:
         """Ensure from address is properly formatted"""
-        if self.from_email and '<' in self.from_email and '>' in self.from_email:
+        if '<' in self.from_email and '>' in self.from_email:
             # Already in correct format "Name <email@domain.com>"
             return self.from_email
         elif self.from_name and self.from_email:
             # Format as "Name <email@domain.com>"
-            # Extract just the email part if it contains brackets
-            email_part = self.from_email
-            if '<' in email_part:
-                import re
-                match = re.search(r'<(.+?)>', email_part)
-                if match:
-                    email_part = match.group(1)
-            return f"{self.from_name} <{email_part}>"
+            return f"{self.from_name} <{self.from_email}>"
         else:
             # Just email
             return self.from_email
