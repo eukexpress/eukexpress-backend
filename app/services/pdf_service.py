@@ -37,6 +37,10 @@ async def generate_invoice_pdf(shipment):
         # Use absolute file path for QR code (not URL)
         qr_code_file_path = os.path.join(settings.QR_CODE_PATH, f"{shipment.tracking_number}.png")
         
+        # Check if QR code exists, if not, use placeholder
+        if not os.path.exists(qr_code_file_path):
+            qr_code_file_path = os.path.join(settings.QR_CODE_PATH, "placeholder.png")
+        
         data = {
             "tracking": shipment.tracking_number,
             "invoice_number": shipment.invoice_number,
@@ -65,7 +69,7 @@ async def generate_invoice_pdf(shipment):
             "payment_status": shipment.payment_status,
             "sending_date": shipment.sending_date.strftime("%Y-%m-%d") if shipment.sending_date else "N/A",
             "estimated_delivery": shipment.estimated_delivery_date.strftime("%Y-%m-%d") if shipment.estimated_delivery_date else "N/A",
-            "qr_code_path": qr_code_file_path  # Use file path, not URL
+            "qr_code_path": f"file://{qr_code_file_path}"  # Use file:// protocol
         }
         
         html_content = template.render(**data)

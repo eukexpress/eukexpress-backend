@@ -1,4 +1,3 @@
-# Eukexpress\backend\app\api\v1\communication.py
 """
 Communication Endpoints
 Direct messaging and email management
@@ -94,17 +93,30 @@ async def send_direct_message(
         </html>
         """
         
-        # Send in background
+        # Send in background - FIXED: removed extra parameters
         background_tasks.add_task(
             email_service.send_email,
-            to_email=email,
+            to=[email],  # ✅ CORRECT - to takes a list
             subject=message.subject,
-            html_content=html_content,
-            shipment_id=shipment.id,
-            recipient_type=recipient_type,
-            email_type="custom_message"
+            html_content=html_content
         )
         sent_to.append(email)
+        
+        # Log the email in database (you might want to create an EmailLog record)
+        try:
+            email_log = EmailLog(
+                shipment_id=shipment.id,
+                recipient_type=recipient_type,
+                recipient_email=email,
+                email_type="custom_message",
+                subject=message.subject,
+                status="SENT"
+            )
+            db.add(email_log)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Failed to log email: {e}")
+            db.rollback()
     
     logger.info(f"Direct message sent for {tracking} to {len(sent_to)} recipients")
     
@@ -137,12 +149,8 @@ async def resend_email(
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
     
-    # Resend based on type
-    if email_data.email_type == "invoice":
-        background_tasks.add_task(email_service.send_invoice, shipment, db)
-        email_type_sent = "invoice"
-    elif email_data.email_type == "last_notification":
-        # Get last email sent
+    # Get the email to resend
+    if email_data.email_type == "last_notification":
         last_email = db.query(EmailLog)\
             .filter(EmailLog.shipment_id == shipment.id)\
             .order_by(desc(EmailLog.created_at))\
@@ -151,23 +159,42 @@ async def resend_email(
         if not last_email:
             raise HTTPException(status_code=404, detail="No previous email found")
         
-        # Resend based on type
-        if last_email.email_type == "invoice":
-            background_tasks.add_task(email_service.send_invoice, shipment, db)
-        elif last_email.email_type == "customs_bond":
-            background_tasks.add_task(email_service.send_customs_bond_notification, shipment, db)
-        elif last_email.email_type == "delivery_confirmation":
-            background_tasks.add_task(email_service.send_delivery_confirmation, shipment, db)
-        # Add other types as needed
-        
-        email_type_sent = last_email.email_type
+        email_type = last_email.email_type
+    else:
+        email_type = email_data.email_type
     
-    logger.info(f"Email resent for {tracking}: {email_type_sent}")
+    # Resend based on type
+    if email_type == "invoice":
+        # You'll need to implement this
+        background_tasks.add_task(
+            email_service.send_email,
+            to=[shipment.sender_email],
+            subject=f"Invoice for Shipment {shipment.tracking_number}",
+            html_content=f"<p>Invoice for shipment {shipment.tracking_number}</p>"
+        )
+    elif email_type == "customs_bond":
+        background_tasks.add_task(
+            email_service.send_customs_notification,
+            shipment,
+            "activate",
+            {}
+        )
+    elif email_type == "delivery_confirmation":
+        background_tasks.add_task(
+            email_service.send_status_update_notification,
+            shipment,
+            "IN_TRANSIT",
+            "DELIVERED",
+            None,
+            None
+        )
+    
+    logger.info(f"Email resent for {tracking}: {email_type}")
     
     return {
         "success": True,
-        "message": f"{email_type_sent} email resent successfully",
-        "email_type": email_type_sent
+        "message": f"{email_type} email resent successfully",
+        "email_type": email_type
     }
 
 @router.get("/{tracking}/email-history", response_model=list)

@@ -93,7 +93,7 @@ class EmailService:
             logger.error(f"❌ Error sending email: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
     
-    async def send_test_email(self, to: str) -> Dict[str, Any]:
+    async def send_test_email(self, to_email: str) -> Dict[str, Any]:
         """Send a test email"""
         html_content = """
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -113,7 +113,7 @@ class EmailService:
         """
         
         return await self.send_email(
-            to=[to],
+            to=[to_email],
             subject="EukExpress - Test Email",
             html_content=html_content
         )
