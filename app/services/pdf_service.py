@@ -1,15 +1,23 @@
 ﻿"""
 PDF Generation Service
-Generates professional invoice PDFs
+Generates professional invoice PDFs - COMPLETE NO HALF CODE
 """
 
 import os
-from weasyprint import HTML, CSS
 from jinja2 import Environment, FileSystemLoader
 from datetime import datetime
 import logging
 
 from app.config import settings
+from app.utils.pdf_utils import (
+    ensure_directory_exists,
+    get_qr_code_path,
+    format_qr_code_url,
+    html_to_pdf,
+    format_dimensions,
+    format_currency,
+    get_pdf_path
+)
 
 # Configure Jinja2 template environment
 template_env = Environment(
@@ -20,27 +28,31 @@ template_env = Environment(
 logger = logging.getLogger(__name__)
 
 async def generate_invoice_pdf(shipment):
-    """Generate invoice PDF for shipment"""
+    """
+    Generate invoice PDF for shipment
+    
+    Args:
+        shipment: Shipment database object
+    
+    Returns:
+        Dictionary with success status and path or error
+    """
     try:
-        # Create invoices directory if it doesn't exist
+        # Ensure invoices directory exists
         invoice_dir = os.path.join(settings.UPLOAD_PATH, "invoices")
-        os.makedirs(invoice_dir, exist_ok=True)
+        ensure_directory_exists(invoice_dir)
         
         # Render template
         template = template_env.get_template("invoice_template.html")
         
+        # Get QR code path and format as file:// URL
+        qr_code_path = get_qr_code_path(settings.QR_CODE_PATH, shipment.tracking_number)
+        qr_code_url = format_qr_code_url(qr_code_path)
+        
+        # Format dimensions
+        dimensions_display = format_dimensions(shipment.dimensions)
+        
         # Prepare data for template
-        dimensions_display = "N/A"
-        if shipment.dimensions:
-            dimensions_display = f"{shipment.dimensions.get('length', '')}x{shipment.dimensions.get('width', '')}x{shipment.dimensions.get('height', '')} cm"
-        
-        # Use absolute file path for QR code (not URL)
-        qr_code_file_path = os.path.join(settings.QR_CODE_PATH, f"{shipment.tracking_number}.png")
-        
-        # Check if QR code exists, if not, use placeholder
-        if not os.path.exists(qr_code_file_path):
-            qr_code_file_path = os.path.join(settings.QR_CODE_PATH, "placeholder.png")
-        
         data = {
             "tracking": shipment.tracking_number,
             "invoice_number": shipment.invoice_number,
@@ -69,28 +81,27 @@ async def generate_invoice_pdf(shipment):
             "payment_status": shipment.payment_status,
             "sending_date": shipment.sending_date.strftime("%Y-%m-%d") if shipment.sending_date else "N/A",
             "estimated_delivery": shipment.estimated_delivery_date.strftime("%Y-%m-%d") if shipment.estimated_delivery_date else "N/A",
-            "qr_code_path": f"file://{qr_code_file_path}"  # Use file:// protocol
+            "qr_code_path": qr_code_url
         }
         
+        # Render HTML
         html_content = template.render(**data)
         
+        # Get PDF path
+        pdf_path = get_pdf_path(invoice_dir, shipment.tracking_number)
+        
         # Generate PDF
-        pdf_filename = f"invoice-{shipment.tracking_number}.pdf"
-        pdf_path = os.path.join(invoice_dir, pdf_filename)
+        success = html_to_pdf(html_content, pdf_path, settings.APP_URL)
         
-        # Load CSS if exists
-        css_path = os.path.join("app/templates/pdf", "styles.css")
-        css = CSS(filename=css_path) if os.path.exists(css_path) else None
-        
-        # Generate PDF - use base_url for resolving relative paths
-        HTML(string=html_content, base_url=settings.APP_URL).write_pdf(pdf_path)
+        if not success:
+            raise Exception("PDF generation failed")
         
         # Update shipment with PDF path
         shipment.invoice_pdf_path = pdf_path
         
-        logger.info(f"Invoice PDF generated for {shipment.tracking_number}")
+        logger.info(f"✅ Invoice PDF generated for {shipment.tracking_number}")
         return {"success": True, "path": pdf_path}
         
     except Exception as e:
-        logger.error(f"Failed to generate PDF for {shipment.tracking_number}: {e}")
+        logger.error(f"❌ Failed to generate PDF for {shipment.tracking_number}: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
