@@ -1,28 +1,36 @@
-﻿# Python
+﻿# Environment files
+.env
+.env.*
+.env.local
+.env.production
+.env.development
+
+# Python
 __pycache__/
 *.py[cod]
 *.so
 .Python
-.env
-.venv
 env/
 venv/
 ENV/
-
-# Test results
-api-test-results-*.json
-backend-test-results-*.json
-eukexpress-full-test-*.json
-final-test-results-*.json
-system-test-results-*.json
-diagnose-routers.ps1
+pip-log.txt
+pip-delete-this-directory.txt
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # Logs
 *.log
 logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Uploads
+frontend/uploads/
+frontend/qr_codes/
