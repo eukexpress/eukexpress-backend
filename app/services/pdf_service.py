@@ -9,7 +9,7 @@ import logging
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import inch, mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.pdfbase import pdfmetrics
@@ -71,14 +71,14 @@ async def generate_invoice_pdf(shipment):
         pdf_filename = f"invoice-{shipment.tracking_number}.pdf"
         pdf_path = os.path.join(invoice_dir, pdf_filename)
         
-        # Create the PDF document
+        # Create the PDF document with adjusted margins to fit everything on one page
         doc = SimpleDocTemplate(
             pdf_path,
             pagesize=A4,
             rightMargin=72,
             leftMargin=72,
-            topMargin=72,
-            bottomMargin=72,
+            topMargin=50,  # Reduced top margin
+            bottomMargin=50,  # Reduced bottom margin
         )
         
         # Container for the 'Flowable' objects
@@ -93,7 +93,7 @@ async def generate_invoice_pdf(shipment):
                 name='CustomRightAlign',
                 parent=styles['Normal'],
                 alignment=TA_RIGHT,
-                fontSize=10,
+                fontSize=9,  # Slightly smaller font
             ),
             'CustomCenterAlign': ParagraphStyle(
                 name='CustomCenterAlign',
@@ -104,22 +104,24 @@ async def generate_invoice_pdf(shipment):
             'CustomTitle': ParagraphStyle(
                 name='CustomTitle',
                 parent=styles['Heading1'],
-                alignment=TA_CENTER,
+                alignment=TA_LEFT,  # Changed to left align to make room for QR
                 textColor=colors.HexColor('#003366'),
-                fontSize=24,
-                spaceAfter=20,
+                fontSize=20,  # Slightly smaller title
+                spaceAfter=10,
                 fontName='Helvetica-Bold',
             ),
             'CustomNormal': ParagraphStyle(
                 name='CustomNormal',
                 parent=styles['Normal'],
-                fontSize=10,
+                fontSize=9,  # Slightly smaller font
+                leading=12,  # Tighter line spacing
             ),
             'CustomBold': ParagraphStyle(
                 name='CustomBold',
                 parent=styles['Normal'],
-                fontSize=10,
+                fontSize=9,  # Slightly smaller font
                 fontName='Helvetica-Bold',
+                leading=12,  # Tighter line spacing
             ),
         }
         
@@ -128,21 +130,76 @@ async def generate_invoice_pdf(shipment):
             styles.add(style)
         
         # ============================================
-        # HEADER with Contact Info
+        # HEADER with QR CODE (TOP RIGHT)
         # ============================================
-        header_data = [
-            [Paragraph("<b>EukExpress Global Logistics</b>", styles['CustomTitle'])],
+        
+        # Generate QR code (top right)
+        qr_reportlab = None
+        try:
+            # Generate QR code pointing to frontend tracking page
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'https://eukexpress.com')
+            qr_data = f"{frontend_url}/track.html?number={shipment.tracking_number}"
+            
+            # Create QR code image
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=8,  # Slightly smaller box size
+                border=2,  # Smaller border
+            )
+            qr.add_data(qr_data)
+            qr.make(fit=True)
+            
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convert PIL image to bytes for ReportLab
+            img_buffer = BytesIO()
+            qr_img.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            # Create ReportLab Image (smaller size)
+            qr_reportlab = Image(img_buffer, width=1.2*inch, height=1.2*inch)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not generate QR code: {e}")
+        
+        # Create header with company name on left and QR on right
+        header_data = []
+        
+        if qr_reportlab:
+            # Two-column layout: Company name (left) and QR code (right)
+            company_name = Paragraph("<b>EukExpress Global Logistics</b>", styles['CustomTitle'])
+            header_data = [[company_name, qr_reportlab]]
+            header_colwidths = [350, 100]  # Allocate space for QR code
+        else:
+            # Just company name if QR code failed
+            company_name = Paragraph("<b>EukExpress Global Logistics</b>", styles['CustomTitle'])
+            header_data = [[company_name]]
+            header_colwidths = [450]
+        
+        header_table = Table(header_data, colWidths=header_colwidths)
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (-1, 0), (-1, 0), 'RIGHT') if qr_reportlab else ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 10))  # Reduced spacing
+        
+        # ============================================
+        # CONTACT INFORMATION
+        # ============================================
+        contact_data = [
             [Paragraph("Contact US", styles['CustomRightAlign'])],
             [Paragraph(f"Address: {shipment.sender_address}", styles['CustomRightAlign'])],
             [Paragraph(f"Email: {shipment.sender_email}", styles['CustomRightAlign'])],
         ]
-        header_table = Table(header_data, colWidths=[450])
-        header_table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-            ('ALIGN', (0, 1), (0, -1), 'RIGHT'),
+        contact_table = Table(contact_data, colWidths=[450])
+        contact_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
         ]))
-        story.append(header_table)
-        story.append(Spacer(1, 20))
+        story.append(contact_table)
+        story.append(Spacer(1, 10))
         
         # ============================================
         # TRACKING SECTION - FIXED DATE HANDLING
@@ -158,10 +215,11 @@ async def generate_invoice_pdf(shipment):
             ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#f5f5f5')),
             ('BACKGROUND', (0, 1), (0, 1), colors.HexColor('#f5f5f5')),
             ('LEFTPADDING', (0, 0), (0, -1), 20),
-            ('BOTTOMPADDING', (0, 0), (0, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (0, 0), 8),
+            ('TOPPADDING', (0, 1), (0, 1), 8),
         ]))
         story.append(tracking_table)
-        story.append(Spacer(1, 20))
+        story.append(Spacer(1, 10))
         
         # ============================================
         # SENDER AND RECEIVER GRID
@@ -192,43 +250,42 @@ async def generate_invoice_pdf(shipment):
             ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#e0e0e0')),
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f9f9f9')),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 15),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 15),
-            ('TOPPADDING', (0, 0), (-1, -1), 15),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),  # Reduced padding
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),  # Reduced padding
+            ('TOPPADDING', (0, 0), (-1, -1), 10),  # Reduced padding
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),  # Reduced padding
         ]))
         story.append(parties_table)
-        story.append(Spacer(1, 20))
-        
-        # ============================================
-        # DESTINATION
-        # ============================================
-        dest_text = f"<b>Destination: {shipment.destination_location}</b>"
-        story.append(Paragraph(dest_text, styles['CustomBold']))
         story.append(Spacer(1, 10))
         
         # ============================================
-        # COMMENTS / AMOUNT
+        # DESTINATION AND COMMENTS (SAME ROW)
         # ============================================
+        dest_text = f"<b>Destination: {shipment.destination_location}</b>"
         comment_text = f"<b>Comments: {shipment.declared_currency} {shipment.declared_value or 0}</b>"
-        comment_para = Paragraph(comment_text, styles['CustomNormal'])
-        comment_table = Table([[comment_para]], colWidths=[450])
-        comment_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#fff3cd')),
-            ('BOX', (0, 0), (0, 0), 1, colors.HexColor('#ffeeba')),
-            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-            ('LEFTPADDING', (0, 0), (0, 0), 15),
-            ('TOPPADDING', (0, 0), (0, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (0, 0), 10),
+        
+        # Put destination and comments in a 2-column table
+        dest_comment_data = [
+            [Paragraph(dest_text, styles['CustomBold']), 
+             Paragraph(comment_text, styles['CustomBold'])]
+        ]
+        dest_comment_table = Table(dest_comment_data, colWidths=[225, 225])
+        dest_comment_table.setStyle(TableStyle([
+            ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#fff3cd')),
+            ('BOX', (1, 0), (1, 0), 1, colors.HexColor('#ffeeba')),
+            ('LEFTPADDING', (0, 0), (0, 0), 5),
+            ('LEFTPADDING', (1, 0), (1, 0), 10),
+            ('TOPPADDING', (0, 0), (1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (1, 0), 8),
         ]))
-        story.append(comment_table)
-        story.append(Spacer(1, 20))
+        story.append(dest_comment_table)
+        story.append(Spacer(1, 10))
         
         # ============================================
         # PARCEL DESCRIPTION
         # ============================================
         story.append(Paragraph("<b>PARCEL DESCRIPTION</b>", styles['CustomBold']))
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 5))
         
         # Format dimensions
         dimensions_display = "N/A"
@@ -250,14 +307,14 @@ async def generate_invoice_pdf(shipment):
             ('TEXTCOLOR', (0, 0), (2, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (2, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('BACKGROUND', (0, 1), (2, 1), colors.HexColor('#f5f5f5')),
         ]))
         story.append(parcel_table)
-        story.append(Spacer(1, 20))
+        story.append(Spacer(1, 10))
         
         # ============================================
         # EXPECTED DELIVERY DATE - FIXED DATE HANDLING
@@ -270,11 +327,11 @@ async def generate_invoice_pdf(shipment):
             ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#003366')),
             ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
             ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-            ('TOPPADDING', (0, 0), (0, 0), 15),
-            ('BOTTOMPADDING', (0, 0), (0, 0), 15),
+            ('TOPPADDING', (0, 0), (0, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (0, 0), 10),
         ]))
         story.append(delivery_table)
-        story.append(Spacer(1, 30))
+        story.append(Spacer(1, 15))
         
         # ============================================
         # TERMS AND CONDITIONS
@@ -288,50 +345,11 @@ async def generate_invoice_pdf(shipment):
         terms_table = Table([[terms_para]], colWidths=[450])
         terms_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-            ('FONTSIZE', (0, 0), (0, 0), 9),
+            ('FONTSIZE', (0, 0), (0, 0), 8),
             ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#666666')),
         ]))
         story.append(terms_table)
-        story.append(Spacer(1, 20))
-        
-        # ============================================
-        # QR CODE (Generated on the fly)
-        # ============================================
-        try:
-            # Generate QR code pointing to frontend tracking page
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'https://eukexpress.com')
-            qr_data = f"{frontend_url}/track.html?number={shipment.tracking_number}"
-            
-            # Create QR code image
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,
-                border=4,
-            )
-            qr.add_data(qr_data)
-            qr.make(fit=True)
-            
-            qr_img = qr.make_image(fill_color="black", back_color="white")
-            
-            # Convert PIL image to bytes for ReportLab
-            img_buffer = BytesIO()
-            qr_img.save(img_buffer, format='PNG')
-            img_buffer.seek(0)
-            
-            # Create ReportLab Image
-            qr_reportlab = Image(img_buffer, width=1.5*inch, height=1.5*inch)
-            
-            # Create a table to hold the QR code (right-aligned)
-            qr_data_table = [[qr_reportlab]]
-            qr_table = Table(qr_data_table, colWidths=[450])
-            qr_table.setStyle(TableStyle([
-                ('ALIGN', (0, 0), (0, 0), 'RIGHT'),
-            ]))
-            story.append(qr_table)
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Could not generate QR code: {e}")
+        story.append(Spacer(1, 10))
         
         # ============================================
         # FOOTER
@@ -341,9 +359,9 @@ async def generate_invoice_pdf(shipment):
         footer_table = Table([[footer_para]], colWidths=[450])
         footer_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-            ('FONTSIZE', (0, 0), (0, 0), 8),
+            ('FONTSIZE', (0, 0), (0, 0), 7),
             ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#999999')),
-            ('TOPPADDING', (0, 0), (0, 0), 20),
+            ('TOPPADDING', (0, 0), (0, 0), 5),
         ]))
         story.append(footer_table)
         
