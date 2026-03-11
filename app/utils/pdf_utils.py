@@ -86,7 +86,7 @@ def html_to_pdf(
     base_url: Optional[str] = None
 ) -> bool:
     """
-    Convert HTML to PDF with error handling - FIXED for WeasyPrint 60.1 compatibility
+    Convert HTML to PDF with error handling - FIXED for WeasyPrint 53.4 compatibility
     
     Args:
         html_content: HTML string to convert
@@ -97,15 +97,11 @@ def html_to_pdf(
         True if successful, False otherwise
     """
     try:
-        # For WeasyPrint 60.1, we need to use a different approach
-        # Create HTML object first
+        # For WeasyPrint 53.4, this syntax works
         if base_url:
-            html = HTML(string=html_content, base_url=base_url)
+            HTML(string=html_content, base_url=base_url).write_pdf(output_path)
         else:
-            html = HTML(string=html_content)
-        
-        # Write PDF - don't pass any extra arguments
-        html.write_pdf(output_path)
+            HTML(string=html_content).write_pdf(output_path)
         
         logger.info(f"✅ PDF generated: {output_path}")
         return True

@@ -75,13 +75,14 @@
         }
         
         .parties-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: flex;
+            justify-content: space-between;
             gap: 30px;
             margin-bottom: 30px;
         }
         
         .party-box {
+            flex: 1;
             background: #f9f9f9;
             padding: 15px;
             border: 1px solid #e0e0e0;
@@ -135,12 +136,13 @@
         }
         
         .parcel-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: flex;
+            justify-content: space-between;
             gap: 15px;
         }
         
         .parcel-item {
+            flex: 1;
             font-size: 14px;
         }
         
@@ -200,8 +202,8 @@
             </div>
             <div class="contact-info">
                 <p><strong>Contact US</strong></p>
-                <p>Address: {{ sender.address }}</p>
-                <p>Email: {{ sender.email }}</p>
+                <p>Address: 309 Randy View</p>
+                <p>Email: delivery@eukexpress.com</p>
             </div>
         </div>
 
@@ -232,7 +234,6 @@
                     <p>{{ recipient.address }}</p>
                     <p>{{ recipient.email }}</p>
                     <p>{{ recipient.phone }}</p>
-                    <p>{{ recipient.address }}</p>
                 </div>
             </div>
         </div>
