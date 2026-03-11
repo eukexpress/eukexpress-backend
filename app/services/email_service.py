@@ -187,7 +187,10 @@ class EmailService:
             return {"success": False, "error": str(e)}
     
     async def send_shipment_created_notification(self, shipment):
-        """Send notification to recipient about new shipment (without QR)"""
+        """
+        Send notification to recipient about new shipment
+        The QR code is INSIDE the invoice PDF, not attached separately
+        """
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
@@ -205,7 +208,8 @@ class EmailService:
                     <p><strong>Estimated Delivery:</strong> {shipment.estimated_delivery_date}</p>
                 </div>
                 
-                <p>Track your shipment: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
+                <p>The invoice with QR code for tracking has been sent to the sender.</p>
+                <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Click here</a></p>
             </div>
             <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                 <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -219,69 +223,8 @@ class EmailService:
             html_content=html_content
         )
     
-    async def send_shipment_created_notification_with_qr(self, shipment):
-        """Send notification to recipient about new shipment with QR code attached"""
-        try:
-            # Get QR code content for attachment
-            qr_code_content = None
-            qr_base64 = None
-            
-            if hasattr(settings, 'QR_CODE_PATH'):
-                qr_path = get_qr_code_path(settings.QR_CODE_PATH, shipment.tracking_number)
-                if qr_path and os.path.exists(qr_path):
-                    with open(qr_path, 'rb') as f:
-                        qr_code_content = f.read()
-                    logger.info(f"✅ QR code found for attachment: {shipment.tracking_number}")
-                    
-                    # Convert to base64
-                    qr_base64 = base64.b64encode(qr_code_content).decode('utf-8')
-                else:
-                    logger.warning(f"⚠️ QR code not found for {shipment.tracking_number}, sending without attachment")
-                    return await self.send_shipment_created_notification(shipment)
-            
-            html_content = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background-color: #1e3c72; padding: 20px; text-align: center;">
-                    <h1 style="color: white; margin: 0;">EukExpress Global Logistics</h1>
-                </div>
-                <div style="padding: 20px;">
-                    <h2 style="color: #1e293b;">A Shipment Has Been Created for You</h2>
-                    <p>Dear {shipment.recipient_name},</p>
-                    <p>A shipment has been created for you by {shipment.sender_name}.</p>
-                    
-                    <div style="background: #f8fafc; padding: 15px; border-left: 4px solid #1e3c72; margin: 20px 0;">
-                        <p><strong>Tracking Number:</strong> {shipment.tracking_number}</p>
-                        <p><strong>Origin:</strong> {shipment.origin_location}</p>
-                        <p><strong>Destination:</strong> {shipment.destination_location}</p>
-                        <p><strong>Estimated Delivery:</strong> {shipment.estimated_delivery_date}</p>
-                    </div>
-                    
-                    <p>Scan the QR code attached to this email to track your shipment, or click: 
-                    <a href="https://eukexpress.com/track?number={shipment.tracking_number}">Track Online</a></p>
-                </div>
-                <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
-                    <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
-                </div>
-            </div>
-            """
-            
-            # Prepare attachments with base64 content
-            attachments = [{
-                'filename': f"qr-{shipment.tracking_number}.png",
-                'content': qr_base64,  # Send base64 string, not bytes
-                'content_type': 'image/png'
-            }]
-            
-            return await self.send_email(
-                to=[shipment.recipient_email],
-                subject=f"Shipment {shipment.tracking_number} Created for You (with QR)",
-                html_content=html_content,
-                attachments=attachments
-            )
-        except Exception as e:
-            logger.error(f"Error sending shipment notification with QR: {e}", exc_info=True)
-            # Fallback to sending without QR
-            return await self.send_shipment_created_notification(shipment)
+    # REMOVED: send_shipment_created_notification_with_qr - No longer needed
+    # The QR code is now INSIDE the invoice PDF, not sent as separate attachment
     
     async def send_status_update_notification(self, shipment, old_status, new_status, location=None, notes=None):
         """Send status update notification to both parties"""
