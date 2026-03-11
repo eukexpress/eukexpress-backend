@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, Union
 from weasyprint import HTML
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ def html_to_pdf(
     base_url: Optional[str] = None
 ) -> bool:
     """
-    Convert HTML to PDF with error handling - FIXED for WeasyPrint compatibility
+    Convert HTML to PDF with error handling - FIXED for WeasyPrint 60.1 compatibility
     
     Args:
         html_content: HTML string to convert
@@ -96,13 +97,14 @@ def html_to_pdf(
         True if successful, False otherwise
     """
     try:
-        # Create HTML object first - DON'T chain methods
+        # For WeasyPrint 60.1, we need to use a different approach
+        # Create HTML object first
         if base_url:
             html = HTML(string=html_content, base_url=base_url)
         else:
             html = HTML(string=html_content)
         
-        # Then write PDF - THIS IS THE KEY FIX
+        # Write PDF - don't pass any extra arguments
         html.write_pdf(output_path)
         
         logger.info(f"✅ PDF generated: {output_path}")
@@ -195,3 +197,15 @@ def read_qr_code_file(qr_code_dir: str, tracking_number: str) -> Optional[bytes]
             logger.error(f"Failed to read QR code file: {e}")
             return None
     return None
+
+def encode_file_for_email(file_content: bytes) -> str:
+    """
+    Encode file content for email attachment (Resend expects base64)
+    
+    Args:
+        file_content: Binary file content
+    
+    Returns:
+        Base64 encoded string
+    """
+    return base64.b64encode(file_content).decode('utf-8')

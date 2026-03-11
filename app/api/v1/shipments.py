@@ -166,17 +166,29 @@ async def create_shipment(
     except Exception as e:
         logger.error(f"❌ PDF generation or email failed: {e}", exc_info=True)
     
-    # Send notification to recipient
+    # Send notification to recipient with QR code
     try:
-        logger.info(f"📧 Sending notification to recipient: {new_shipment.recipient_email}")
-        notification_result = await email_service.send_shipment_created_notification(new_shipment)
+        logger.info(f"📧 Sending notification with QR to recipient: {new_shipment.recipient_email}")
+        # Use the QR version of the notification
+        notification_result = await email_service.send_shipment_created_notification_with_qr(new_shipment)
         if notification_result and notification_result.get("success"):
-            logger.info(f"✅ Notification email sent to recipient: {notification_result.get('id')}")
+            logger.info(f"✅ Notification email with QR sent to recipient: {notification_result.get('id')}")
         else:
             error_msg = notification_result.get('error') if notification_result else "Unknown error"
-            logger.error(f"❌ Failed to send notification: {error_msg}")
+            logger.error(f"❌ Failed to send notification with QR: {error_msg}")
+            # Fallback to regular notification
+            logger.info(f"📧 Trying fallback notification without QR...")
+            fallback_result = await email_service.send_shipment_created_notification(new_shipment)
+            if fallback_result and fallback_result.get("success"):
+                logger.info(f"✅ Fallback notification sent to recipient: {fallback_result.get('id')}")
     except Exception as e:
         logger.error(f"❌ Notification email failed: {e}", exc_info=True)
+        # One more fallback attempt
+        try:
+            logger.info(f"📧 Final fallback attempt...")
+            await email_service.send_shipment_created_notification(new_shipment)
+        except:
+            logger.error(f"❌ All notification attempts failed")
     
     logger.info(f"📦 Shipment created: {tracking_number}")
     
