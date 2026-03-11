@@ -1,6 +1,6 @@
 ﻿"""
 EukExpress Email Service
-Handles all email sending operations using Resend - COMPLETE FIXED VERSION WITH PDF FOR BOTH
+Handles all email sending operations using Resend - COMPLETE FIXED VERSION WITH PDF FOR RECIPIENT
 """
 import logging
 import resend
@@ -142,8 +142,8 @@ class EmailService:
     
     async def send_invoice_pdf(self, shipment, pdf_path, recipient_email=None):
         """
-        Send invoice PDF as attachment to sender (and optionally recipient)
-        This is used for the SENDER email
+        Send invoice PDF as attachment - ATTEMPT TO SEND TO SENDER
+        (This may fail, but we try anyway)
         """
         try:
             with open(pdf_path, 'rb') as f:
@@ -202,17 +202,20 @@ class EmailService:
             
             if result.get("success"):
                 logger.info(f"✅ Invoice PDF sent to sender: {shipment.sender_email}")
+            else:
+                logger.warning(f"⚠️ Failed to send to sender: {result.get('error')}")
             
             return result
             
         except Exception as e:
-            logger.error(f"Error sending invoice PDF: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+            logger.error(f"Error sending invoice PDF to sender: {e}", exc_info=True)
+            # Return success=False but don't fail the whole operation
+            return {"success": False, "error": str(e), "recipient_only": True}
     
     async def send_shipment_created_notification(self, shipment, pdf_path=None):
         """
         Send notification to recipient about new shipment with PDF attached
-        This is used for the RECIPIENT email
+        THIS IS THE PRIMARY EMAIL THAT WORKS - NOW WITH PDF ATTACHMENT
         """
         try:
             # Prepare PDF attachment if available
@@ -240,7 +243,7 @@ class EmailService:
                 <div style="background-color: #e6f7e6; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #28a745;">
                     <p style="margin: 0; font-size: 16px; color: #1e3c72;">
                         <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email. 
-                        Please check your email client for the attached file.
+                        You can download it to view the complete shipment invoice.
                     </p>
                 </div>
                 """
@@ -264,11 +267,16 @@ class EmailService:
                     
                     {pdf_notice}
                     
-                    <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
+                    <p style="margin-top: 20px;">Track your shipment online: 
+                        <a href="https://eukexpress.com/track?number={shipment.tracking_number}" 
+                           style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                           Track Now
+                        </a>
+                    </p>
                 </div>
                 <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                     <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
-                    <p>This email contains an attached PDF invoice. If you cannot see the attachment, please check your email client's download section.</p>
+                    {has_pdf and '<p>This email contains an attached PDF invoice. Please check your email client for the attachment.</p>' or ''}
                 </div>
             </div>
             """
@@ -285,6 +293,8 @@ class EmailService:
             
             if result.get("success"):
                 logger.info(f"✅ Email with PDF attachment sent to recipient: {shipment.recipient_email}")
+                if has_pdf:
+                    logger.info(f"📎 PDF invoice attached for recipient: invoice-{shipment.tracking_number}.pdf")
             else:
                 logger.error(f"❌ Failed to send email to recipient: {result.get('error')}")
             
