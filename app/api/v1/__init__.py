@@ -10,6 +10,7 @@ from app.api.v1.communication import router as communication_router
 from app.api.v1.shipment_detail import router as shipment_detail_router
 from app.api.v1.bulk_operations import router as bulk_operations_router
 from app.api.v1.interventions import router as interventions_router
+from app.api.v1.heritage import heritage_router
 
 __all__ = [
     "auth_router",
@@ -20,5 +21,6 @@ __all__ = [
     "communication_router",
     "shipment_detail_router",
     "bulk_operations_router",
-    "interventions_router"
+    "interventions_router",
+    "heritage_router"
 ]

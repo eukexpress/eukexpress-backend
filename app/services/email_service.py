@@ -19,33 +19,32 @@ class EmailService:
     def __init__(self):
         # Use EUKEXPRESS_* variables for consistency - YOUR PROVEN PATTERN
         self.api_key = settings.EUKEXPRESS_RESEND_API_KEY or settings.RESEND_API_KEY
-        self.from_email = settings.EUKEXPRESS_FROM_EMAIL or settings.RESEND_FROM_EMAIL
+        self.from_email = "onboarding@delivery.eukexpress.com"
         self.from_name = settings.EUKEXPRESS_FROM_NAME or settings.RESEND_FROM_NAME
         
         # Configure Resend
         if self.api_key:
             resend.api_key = self.api_key
-            logger.info(f"✅ Email service initialized with from_email: {self.from_email}")
-            logger.info(f"✅ Email service initialized with from_name: {self.from_name}")
+            logger.info(f"Email service initialized with from_email: {self.from_email}")
+            logger.info(f"Email service initialized with from_name: {self.from_name}")
         else:
-            logger.error("❌ No Resend API key found - email sending will fail")
+            logger.error("No Resend API key found - email sending will fail")
     
     def _format_from_address(self) -> str:
         """
-        Format from address using YOUR proven pattern that works:
-        "Name <email@domain.com>"
+        Format from address that works: "Name <email@domain.com>"
         """
         if not self.from_email:
-            logger.error("❌ from_email is empty - cannot format address")
+            logger.error("from_email is empty - cannot format address")
             return ""
         
         if not self.from_name:
-            logger.warning("⚠️ from_name is empty, using email only")
+            logger.warning("from_name is empty, using email only")
             return self.from_email
         
-        # YOUR PROVEN PATTERN - This is what you've used for months successfully
+        # Correct format: "Name <email@domain.com>"
         formatted = f"{self.from_name} <{self.from_email}>"
-        logger.info(f"📧 Formatted from address: {formatted}")
+        logger.info(f"Formatted from address: {formatted}")
         return formatted
     
     async def send_email(
@@ -59,14 +58,14 @@ class EmailService:
         """Send an email using Resend"""
         try:
             if not self.api_key:
-                logger.error("❌ Resend API key not configured")
+                logger.error("Resend API key not configured")
                 return {"success": False, "error": "Resend API key not configured"}
             
             # Format from address using YOUR proven pattern
             from_address = self._format_from_address()
             
             if not from_address:
-                logger.error("❌ Failed to format from_address")
+                logger.error("Failed to format from_address")
                 return {"success": False, "error": "Invalid from address configuration"}
             
             # Prepare email params
@@ -96,10 +95,10 @@ class EmailService:
                         'content_type': attachment.get('content_type', 'application/octet-stream')
                     })
                 params["attachments"] = formatted_attachments
-                logger.info(f"📎 Email has {len(attachments)} attachment(s)")
+                logger.info(f"Email has {len(attachments)} attachment(s)")
             
             # Send email
-            logger.info(f"📧 Sending email from: {from_address} to: {to}, subject: {subject}")
+            logger.info(f"Sending email from: {from_address} to: {to}, subject: {subject}")
             
             # Run in thread pool
             loop = asyncio.get_event_loop()
@@ -108,11 +107,11 @@ class EmailService:
                 lambda: resend.Emails.send(params)
             )
             
-            logger.info(f"✅ Email sent successfully: {response['id']}")
+            logger.info(f"Email sent successfully: {response['id']}")
             return {"success": True, "id": response["id"]}
             
         except Exception as e:
-            logger.error(f"❌ Error sending email: {str(e)}", exc_info=True)
+            logger.error(f"Error sending email: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def send_test_email(self, to_email: str) -> Dict[str, Any]:
@@ -176,11 +175,13 @@ class EmailService:
                     
                     <div style="background-color: #e6f7e6; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #28a745;">
                         <p style="margin: 0; font-size: 16px; color: #1e3c72;">
-                            <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email.
+                            <strong>ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email.
                         </p>
                     </div>
                     
-                    <p>Track your shipment online: <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a></p>
+                    <p>Track your shipment online: 
+                        <a href="https://eukexpress.com/track?number={shipment.tracking_number}" style="background-color: #1e3c72; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Track Now</a>
+                    </p>
                 </div>
                 <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #999;">
                     <p>EukExpress Global Logistics - Your Trusted Shipping Partner</p>
@@ -191,7 +192,7 @@ class EmailService:
             
             result = await self.send_email(
                 to=to_emails,
-                subject=f"📎 Shipment {shipment.tracking_number} - Invoice Attached",
+                subject=f"Shipment {shipment.tracking_number} - Invoice Attached",
                 html_content=html_content,
                 attachments=[{
                     'filename': f"invoice-{shipment.tracking_number}.pdf",
@@ -201,9 +202,9 @@ class EmailService:
             )
             
             if result.get("success"):
-                logger.info(f"✅ Invoice PDF sent to sender: {shipment.sender_email}")
+                logger.info(f"Invoice PDF sent to sender: {shipment.sender_email}")
             else:
-                logger.warning(f"⚠️ Failed to send to sender: {result.get('error')}")
+                logger.warning(f"Failed to send to sender: {result.get('error')}")
             
             return result
             
@@ -232,9 +233,9 @@ class EmailService:
                     'content_type': 'application/pdf'
                 })
                 has_pdf = True
-                logger.info(f"✅ PDF attached to recipient email: {pdf_path}")
+                logger.info(f"PDF attached to recipient email: {pdf_path}")
             else:
-                logger.warning(f"⚠️ PDF not found for recipient, sending without attachment")
+                logger.warning("PDF not found for recipient, sending without attachment")
             
             # Email HTML content - clearly indicates PDF is attached with visible notice
             pdf_notice = ""
@@ -242,7 +243,7 @@ class EmailService:
                 pdf_notice = """
                 <div style="background-color: #e6f7e6; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #28a745;">
                     <p style="margin: 0; font-size: 16px; color: #1e3c72;">
-                        <strong>📎 ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email. 
+                        <strong>ATTACHMENT:</strong> The invoice PDF with QR code is attached to this email. 
                         You can download it to view the complete shipment invoice.
                     </p>
                 </div>
@@ -282,7 +283,7 @@ class EmailService:
             """
             
             # Subject line includes paperclip emoji to indicate attachment
-            subject = f"📎 Shipment {shipment.tracking_number} Created for You - Invoice Attached" if has_pdf else f"Shipment {shipment.tracking_number} Created for You"
+            subject = f"Shipment {shipment.tracking_number} Created for You - Invoice Attached" if has_pdf else f"Shipment {shipment.tracking_number} Created for You"
             
             result = await self.send_email(
                 to=[shipment.recipient_email],
@@ -292,16 +293,16 @@ class EmailService:
             )
             
             if result.get("success"):
-                logger.info(f"✅ Email with PDF attachment sent to recipient: {shipment.recipient_email}")
+                logger.info(f"Email with PDF attachment sent to recipient: {shipment.recipient_email}")
                 if has_pdf:
-                    logger.info(f"📎 PDF invoice attached for recipient: invoice-{shipment.tracking_number}.pdf")
+                    logger.info(f"PDF invoice attached for recipient: invoice-{shipment.tracking_number}.pdf")
             else:
-                logger.error(f"❌ Failed to send email to recipient: {result.get('error')}")
+                logger.error(f"Failed to send email to recipient: {result.get('error')}")
             
             return result
             
         except Exception as e:
-            logger.error(f"❌ Error sending shipment notification to recipient: {e}", exc_info=True)
+            logger.error(f"Error sending shipment notification to recipient: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def send_status_update_notification(self, shipment, old_status, new_status, location=None, notes=None):

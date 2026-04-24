@@ -1,14 +1,15 @@
-"""
+﻿"""
 EukExpress Global Logistics API
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from sqlalchemy.orm import Session
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING)
@@ -24,10 +25,11 @@ from app.api.v1 import (
     communication_router,
     shipment_detail_router,
     bulk_operations_router,
-    interventions_router
+    interventions_router,
+    heritage_router
 )
 from app.config import settings
-from app.database import engine, Base, check_database_connection
+from app.database import engine, Base, check_database_connection, get_db
 from app.services.keep_alive import keep_alive_service, start_keep_alive
 
 @asynccontextmanager
@@ -115,6 +117,7 @@ app.include_router(communication_router, prefix="/api/v1/shipments", tags=["Comm
 app.include_router(shipment_detail_router, prefix="/api/v1/shipments", tags=["Shipment Details"])
 app.include_router(bulk_operations_router, prefix="/api/v1/bulk", tags=["Bulk Operations"])
 app.include_router(interventions_router, prefix="/api/v1/shipments", tags=["Interventions"])
+app.include_router(heritage_router, prefix="/api/v1/heritage", tags=["Heritage Trust"])
 
 # Static files
 os.makedirs(settings.UPLOAD_PATH, exist_ok=True)
